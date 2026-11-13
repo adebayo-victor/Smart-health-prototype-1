@@ -43,6 +43,7 @@
 </div>
 
 <script>
+document.getElementById('pStatus').innerText = data.referral_status;
 async function lookupPatient() {
     const code = document.getElementById('codeInput').value.trim();
     const errorMsg = document.getElementById('errorMsg');
