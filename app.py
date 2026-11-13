@@ -110,6 +110,7 @@ def diagnosis(): return render_template('diagnosis.html')
 @app.route('/referral')
 def referral(): return render_template('referral.html')
 
+
 @app.route('/dashboard')
 def dashboard():
     # Get filter parameters from the URL (default to 'all')
