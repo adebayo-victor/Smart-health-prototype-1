@@ -44,21 +44,7 @@
         Process Triage
     </button>
 
-    <!-- Result Box (Hidden until processed) -->
-    <div id="triageResult" class="hidden p-5 rounded-2xl border-2 transition-all mb-6">
-        <div class="flex items-center gap-4 mb-3">
-            <div id="resultIcon"></div>
-            <div>
-                <p id="resultTier" class="text-2xl font-black text-slate-800"></p>
-                <p id="resultTrigger" class="text-sm font-bold text-slate-600 mt-1"></p>
-            </div>
-        </div>
-        <p id="resultNotes" class="text-sm text-slate-700 bg-white/50 p-3 rounded-lg border border-slate-200/50"></p>
-        
-        <!-- TC Steps -->
-        <div class="mt-4 space-y-2" id="tcStepsContainer"></div>
-    </div>
-</div>
+
 
 <script>
 async function processTriage() {
@@ -125,16 +111,6 @@ function displayResult(data) {
     triggerText.innerText = `Triggered by: ${data.trigger}`;
     notesText.innerText = data.notes;
 
-    const tcContainer = document.getElementById('tcStepsContainer');
-    tcContainer.innerHTML = '<p class="text-[10px] font-black uppercase text-slate-500 mb-2">TC: Confirmation Checklist</p>';
-    data.tc_steps.forEach(step => {
-        tcContainer.innerHTML += `
-            <label class="flex items-start gap-3 p-3 bg-white rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-50 transition">
-                <input type="checkbox" class="mt-1 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500">
-                <span class="text-sm font-medium text-slate-700">${step}</span>
-            </label>
-        `;
-    });
 }
 </script>
 {% endblock %}
