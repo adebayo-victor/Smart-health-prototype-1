@@ -188,7 +188,7 @@ def dashboard():
     worker_id = session['worker_id']
     facility_id = session['facility_id']
     
-    # Scoped Query: Show referrals I made OR referrals meant for my facility
+    # Filter: Show referrals I sent OR referrals meant for my facility
     query = Encounter.query.filter(
         db.or_(
             Encounter.origin_worker_id == worker_id,
@@ -196,9 +196,17 @@ def dashboard():
         )
     ).order_by(Encounter.created_at.desc())
     
-    # (Optional: add your existing tier/stage filters here if needed)
+    # (Optional: Keep your existing tier/stage search filters here if you want)
     encounters = query.all()
-    return render_template('dashboard.html', encounters=encounters)
+    
+    # Get a map of all facility IDs to Names for the template
+    facility_centers = {c.id: c.name for c in MedicalCenter.query.all()}
+    
+    return render_template('dashboard.html', 
+                           encounters=encounters, 
+                           current_worker_id=worker_id,
+                           current_facility_id=facility_id,
+                           facility_centers=facility_centers)
 
 # ==========================================
 # 4. BACKEND API ROUTES
