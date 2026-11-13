@@ -413,14 +413,18 @@ def generate_referral():
             db.session.add(encounter)
 
         code = generate_referral_code()
+        qr_uri = make_qr_data_uri(code)          # generate once, store forever
+
         encounter.referral_reason = reason
         encounter.referral_facility = center.name
         encounter.referral_code = code
+        encounter.referral_qr = qr_uri
         encounter.current_stage = 'referral'
         encounter.status = 'referred'
         db.session.commit()
 
         return jsonify({"encounter_id": encounter.id, "referral_code": code,
+                        "referral_qr": qr_uri,
                         "facility": center.name, "patient_name": patient_name, "reason": reason})
     except Exception as e:
         logger.error(f"❌ Referral Error: {traceback.format_exc()}")
