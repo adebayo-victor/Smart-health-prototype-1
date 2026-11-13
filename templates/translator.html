@@ -148,13 +148,15 @@
             };
             
             await audio.play();
-        } catch (error) {
-            btn.disabled = false;
-            playIcon.classList.remove('hidden');
-            loadingIcon.classList.add('hidden');
-            btnText.innerText = 'Play Instruction';
-            alert('Error playing instruction: ' + error.message);
-        }
+            } catch (error) {
+                btn.disabled = false;
+                playIcon.classList.remove('hidden');
+                loadingIcon.classList.add('hidden');
+                btnText.innerText = 'Play Instruction';
+                
+                // THIS IS THE FIX: It will now show the exact error from Python
+                alert('Error: ' + error.message); 
+            }
     }
 
     // --- 2. AUDIO RECORDING & UPLOAD ---
