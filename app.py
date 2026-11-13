@@ -14,7 +14,7 @@ app = Flask(__name__)
 # DATABASE CONFIGURATION
 # ==========================================
 # Create a local SQLite database file named 'smarthealth.db'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///smarthealth.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/smarthealth.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
