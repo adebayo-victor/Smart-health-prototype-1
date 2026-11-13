@@ -1,0 +1,282 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="pb-32">
+    <!-- Header -->
+    <div class="flex items-center gap-3 mb-6">
+        <a href="/login" class="w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-full transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+        </a>
+        <h1 class="text-xl font-black text-slateDark">Medical Translator</h1>
+    </div>
+
+    <!-- Step 1: Worker Instruction -->
+    <div class="space-y-3 mb-8">
+        <h2 class="text-xs font-black uppercase text-slate-400">1. Worker Instruction</h2>
+        <input type="text" id="instructionInput" placeholder="e.g., Please say your name and what brings you here..." class="w-full min-h-12 px-4 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald">
+        <button onclick="playInstruction()" class="w-full min-h-12 bg-skyBlue text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-skyBlue/90 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+            Play Instruction
+        </button>
+    </div>
+
+    <!-- Step 2: Patient Audio Input -->
+    <div class="space-y-3 mb-8">
+        <h2 class="text-xs font-black uppercase text-slate-400">2. Patient Audio Input</h2>
+        
+        <!-- Recording UI (Hidden by default) -->
+        <div id="recordingUI" class="hidden space-y-3">
+            <div class="w-full h-16 bg-slateDark rounded-xl flex items-center justify-center gap-1.5 overflow-hidden">
+                <!-- Fake waveform animation -->
+                <div class="w-1.5 h-4 bg-crimson rounded-full animate-pulse"></div>
+                <div class="w-1.5 h-8 bg-crimson rounded-full animate-pulse" style="animation-delay: 0.1s"></div>
+                <div class="w-1.5 h-6 bg-crimson rounded-full animate-pulse" style="animation-delay: 0.2s"></div>
+                <div class="w-1.5 h-10 bg-crimson rounded-full animate-pulse" style="animation-delay: 0.3s"></div>
+                <div class="w-1.5 h-5 bg-crimson rounded-full animate-pulse" style="animation-delay: 0.4s"></div>
+            </div>
+            <div class="flex items-center justify-between text-sm font-bold text-crimson px-2">
+                <span class="flex items-center gap-2"><span class="w-2 h-2 bg-crimson rounded-full animate-pulse"></span> Recording...</span>
+                <span id="timerDisplay">00:00</span>
+            </div>
+            <button onclick="stopRecording()" class="w-full min-h-14 bg-slate-200 text-slate-700 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-300 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+                Stop Recording
+            </button>
+        </div>
+
+        <!-- Idle UI (Record / Upload Buttons) -->
+        <div id="idleUI" class="grid grid-cols-2 gap-3">
+            <button onclick="startRecording()" class="w-full min-h-14 bg-emerald text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald/90 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
+                Record Live
+            </button>
+            
+            <input type="file" id="fileInput" accept="audio/*" class="hidden" onchange="handleFileUpload(this.files[0])">
+            <button onclick="document.getElementById('fileInput').click()" class="w-full min-h-14 bg-slateDark text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slateDark/90 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                Upload File
+            </button>
+        </div>
+
+        <!-- Audio Loaded State (Hidden by default) -->
+        <div id="audioLoadedUI" class="hidden p-4 bg-emerald/10 border border-emerald rounded-xl flex items-center gap-3">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-emerald shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+            <div class="flex-1 min-w-0">
+                <p id="audioFileName" class="text-sm font-bold text-slateDark truncate">Audio File</p>
+                <p id="audioFileSize" class="text-xs text-slate-600">Ready to process</p>
+            </div>
+            <button onclick="resetAudio()" class="text-xs font-bold text-crimson hover:underline shrink-0">Clear</button>
+        </div>
+    </div>
+
+    <!-- Step 3: Translate Button -->
+    <button id="translateBtn" onclick="processTranslation()" class="hidden w-full min-h-14 bg-slateDark text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slateDark/90 transition mb-6">
+        Translate & Extract Data
+    </button>
+
+    <!-- Loading State -->
+    <div id="loadingState" class="hidden flex items-center justify-center gap-2 py-6 text-emerald bg-emerald/10 rounded-xl mb-6">
+        <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+        <span class="font-bold">Transcribing (Groq) & Extracting (LiteLLM)...</span>
+    </div>
+
+    <!-- Error State -->
+    <div id="errorState" class="hidden p-4 bg-red-50 border-2 border-red-200 rounded-xl flex items-start gap-3 text-red-800 mb-6">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        <div>
+            <p class="font-black text-sm uppercase tracking-wide text-red-700 mb-1">Processing Failed</p>
+            <p id="errorMessage" class="text-sm font-medium leading-relaxed"></p>
+            <button onclick="resetAll()" class="mt-2 text-xs font-bold text-red-700 underline hover:text-red-900">Dismiss & Try Again</button>
+        </div>
+    </div>
+
+    <!-- Step 4: Extracted Data Results (Injected by JS) -->
+    <div id="resultsArea" class="hidden space-y-4">
+        <h2 class="text-xs font-black uppercase text-slate-400">3. Extracted Data (Confirm Accuracy)</h2>
+        <div id="resultsContent" class="grid gap-3">
+            <!-- HTML will be injected here -->
+        </div>
+    </div>
+</div>
+
+<!-- Sticky Footer Actions (Hidden until results are ready) -->
+<div id="actionFooter" class="hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 flex gap-2 shadow-2xl max-w-2xl mx-auto">
+    <a href="/login" class="flex-1 min-h-12 bg-slate-200 text-slate-700 rounded-xl font-bold text-sm flex items-center justify-center hover:bg-slate-300 transition">Save & Exit</a>
+    <button class="flex-1 min-h-12 bg-emerald text-white rounded-xl font-bold text-sm hover:bg-emerald/90 transition">Run Diagnosis</button>
+    <button class="flex-1 min-h-12 bg-crimson text-white rounded-xl font-bold text-sm hover:bg-crimson/90 transition">Auto Referral</button>
+</div>
+
+<script>
+    // --- 1. INSTRUCTION TTS (Browser Native) ---
+    function playInstruction() {
+        const text = document.getElementById('instructionInput').value;
+        if (!text) return;
+        const utterance = new SpeechSynthesisUtterance(text);
+        // Try to find a Nigerian voice if available
+        const voices = window.speechSynthesis.getVoices();
+        const localVoice = voices.find(v => v.lang.includes('ha') || v.lang.includes('en-NG'));
+        if (localVoice) utterance.voice = localVoice;
+        window.speechSynthesis.speak(utterance);
+    }
+
+    // --- 2. AUDIO RECORDING & UPLOAD ---
+    let mediaRecorder;
+    let audioChunks = [];
+    let currentAudioBlob = null;
+    let timerInterval;
+    let seconds = 0;
+
+    function startRecording() {
+        document.getElementById('idleUI').classList.add('hidden');
+        document.getElementById('recordingUI').classList.remove('hidden');
+        document.getElementById('audioLoadedUI').classList.add('hidden');
+        document.getElementById('translateBtn').classList.add('hidden');
+        
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+                mediaRecorder.onstop = () => {
+                    currentAudioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    showAudioLoaded('Recorded Audio', currentAudioBlob.size);
+                    stream.getTracks().forEach(track => track.stop());
+                };
+                mediaRecorder.start();
+                startTimer();
+            })
+            .catch(err => alert('Microphone access denied. Please allow microphone access.'));
+    }
+
+    function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+            document.getElementById('recordingUI').classList.add('hidden');
+            document.getElementById('idleUI').classList.remove('hidden');
+            stopTimer();
+        }
+    }
+
+    function handleFileUpload(file) {
+        if (file) {
+            currentAudioBlob = file;
+            showAudioLoaded(file.name, file.size);
+        }
+    }
+
+    function showAudioLoaded(name, size) {
+        document.getElementById('idleUI').classList.add('hidden');
+        document.getElementById('recordingUI').classList.add('hidden');
+        document.getElementById('audioLoadedUI').classList.remove('hidden');
+        document.getElementById('translateBtn').classList.remove('hidden');
+        document.getElementById('audioFileName').innerText = name;
+        document.getElementById('audioFileSize').innerText = (size / 1024).toFixed(1) + ' KB • Ready to process';
+    }
+
+    function resetAudio() {
+        currentAudioBlob = null;
+        document.getElementById('audioLoadedUI').classList.add('hidden');
+        document.getElementById('translateBtn').classList.add('hidden');
+        document.getElementById('idleUI').classList.remove('hidden');
+    }
+
+    function startTimer() {
+        seconds = 0;
+        timerInterval = setInterval(() => {
+            seconds++;
+            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const secs = (seconds % 60).toString().padStart(2, '0');
+            document.getElementById('timerDisplay').innerText = `${mins}:${secs}`;
+        }, 1000);
+    }
+
+    function stopTimer() { clearInterval(timerInterval); }
+
+    // --- 3. TRANSLATION PIPELINE ---
+    async function processTranslation() {
+        if (!currentAudioBlob) return;
+
+        // UI States
+        document.getElementById('translateBtn').classList.add('hidden');
+        document.getElementById('loadingState').classList.remove('hidden');
+        document.getElementById('errorState').classList.add('hidden');
+        document.getElementById('resultsArea').classList.add('hidden');
+        document.getElementById('actionFooter').classList.add('hidden');
+
+        const formData = new FormData();
+        formData.append('audio', currentAudioBlob, 'patient_audio.webm');
+
+        try {
+            const response = await fetch('/api/translate', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Server error occurred');
+            }
+
+            // Success: Render Results
+            renderResults(data);
+
+        } catch (error) {
+            document.getElementById('loadingState').classList.add('hidden');
+            document.getElementById('errorState').classList.remove('hidden');
+            document.getElementById('errorMessage').innerText = error.message;
+        }
+    }
+
+    function renderResults(data) {
+        document.getElementById('loadingState').classList.add('hidden');
+        document.getElementById('resultsArea').classList.remove('hidden');
+        document.getElementById('actionFooter').classList.remove('hidden');
+
+        const vitalsText = `Temp: ${data.vitals.temp}°C, BP: ${data.vitals.bp_sys}/${data.vitals.bp_dia}, SpO2: ${data.vitals.spo2}%`;
+
+        const html = `
+            ${createCleanBox('Dialect', data.dialect)}
+            ${createToggle('dialect')}
+            ${createCleanBox('Original Statement', data.statement)}
+            ${createToggle('statement')}
+            ${createCleanBox('Translation', data.translation)}
+            ${createToggle('translation')}
+            ${createCleanBox('Extracted Vitals', vitalsText)}
+            ${createToggle('vitals')}
+            ${createCleanBox('Clinical Conclusion', data.conclusion, true)}
+            ${createToggle('conclusion')}
+        `;
+        document.getElementById('resultsContent').innerHTML = html;
+    }
+
+    function createCleanBox(label, value, isHighlighted = false) {
+        const bgClass = isHighlighted ? 'bg-emerald/5 border-emerald' : 'bg-white border-slate-200';
+        return `
+            <div class="p-4 rounded-xl border transition-all ${bgClass}">
+                <p class="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">${label}</p>
+                <p class="text-sm font-bold text-slateDark leading-relaxed">${value || 'Not provided'}</p>
+            </div>
+        `;
+    }
+
+    function createToggle(key) {
+        return `
+            <button onclick="this.classList.toggle('bg-emerald/10'); this.classList.toggle('border-emerald'); this.classList.toggle('text-emerald'); this.classList.toggle('bg-slate-50'); this.classList.toggle('border-slate-200'); this.classList.toggle('text-slate-500');" class="flex items-center gap-2 min-h-12 px-3 rounded-lg border transition-all w-full justify-start bg-slate-50 border-slate-200 text-slate-500">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span class="text-xs font-bold">Tick to confirm accuracy</span>
+            </button>
+        `;
+    }
+
+    function resetAll() {
+        currentAudioBlob = null;
+        document.getElementById('errorState').classList.add('hidden');
+        document.getElementById('resultsArea').classList.add('hidden');
+        document.getElementById('actionFooter').classList.add('hidden');
+        document.getElementById('idleUI').classList.remove('hidden');
+    }
+</script>
+{% endblock %}
