@@ -9,3 +9,4 @@ gunicorn
 httpx<0.28.0
 qrcode
 Pillow
+gTTS
