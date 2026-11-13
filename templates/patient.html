@@ -49,7 +49,7 @@
             <!-- Welcome Message -->
             <div class="flex justify-start">
                 <div class="max-w-[85%] bg-emerald/10 border border-emerald/20 rounded-2xl rounded-tl-none p-4 shadow-sm">
-                    <p class="text-sm font-medium text-slateDark leading-relaxed">Sannu! I am your health companion. You can speak to me in Hausa or Pidgin. How can I help you today?</p>
+                    <p class="text-sm font-medium text-slateDark leading-relaxed">Sannu! I am your health companion. You can speak to me in Hausa, Pidgin, or English. How can I help you today?</p>
                 </div>
             </div>
         </div>
@@ -148,13 +148,6 @@ function stopRecording(event) {
     }
 }
 
-function stopRecording() {
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-        updateUIState('thinking');
-    }
-}
-
 async function sendAudioToBackend(audioBlob) {
     const formData = new FormData();
     formData.append('audio', audioBlob, 'recording.webm');
@@ -164,10 +157,20 @@ async function sendAudioToBackend(audioBlob) {
     try {
         const response = await fetch('/api/patient_voice', { method: 'POST', body: formData });
         const data = await response.json();
+        
         if (!response.ok) throw new Error(data.error || 'Failed to process');
 
+        // Add User Message
         addMessage(data.user_text, 'user');
-        addMessage(data.ai_text_hausa, 'ai', data.audio_url);
+        
+        // Add AI Message (Updated to use the dynamic local language key)
+        addMessage(data.ai_text_local, 'ai', data.audio_url);
+        
+        // Auto-play the reply if audio is available
+        if (data.audio_url) {
+            playAudio(data.audio_url);
+        }
+        
         updateUIState('idle');
     } catch (error) {
         console.error(error);
@@ -199,6 +202,7 @@ function updateUIState(state) {
     const btn = document.getElementById('micButton');
     const status = document.getElementById('statusText');
     btn.classList.remove('recording', 'thinking');
+    
     if (state === 'recording') {
         btn.classList.add('recording');
         status.innerText = "Listening...";
@@ -216,7 +220,7 @@ function updateUIState(state) {
 
 function playAudio(url) {
     const audio = new Audio(url);
-    audio.play();
+    audio.play().catch(e => console.error("Audio playback failed:", e));
 }
 </script>
 {% endblock %}
