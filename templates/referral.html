@@ -1,68 +1,116 @@
 {% extends "base.html" %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 {% block content %}
-<div class="pb-20">
+<div class="pb-32">
     <div class="flex items-center gap-3 mb-6">
         <a href="/" class="w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-full transition">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
         </a>
-        <h1 class="text-xl font-black text-slateDark">Referral Pass</h1>
+        <h1 class="text-xl font-black text-slate-800">Generate Referral</h1>
     </div>
 
-    <!-- Input State -->
-    <div id="inputState" class="space-y-6">
-        <div class="space-y-2">
-            <label class="text-xs font-bold uppercase text-slate-500">Search Previous Clients</label>
-            <input type="text" placeholder="Type patient name..." class="w-full min-h-12 px-4 rounded-xl border border-slate-200 bg-white font-bold focus:outline-none focus:ring-2 focus:ring-emerald">
-        </div>
-
-        <div class="space-y-2">
-            <label class="text-xs font-bold uppercase text-slate-500">Manual Entry Fallback</label>
-            <input type="text" id="patientName" placeholder="Patient Name" class="w-full min-h-12 px-4 rounded-xl border border-slate-200 bg-white font-bold focus:outline-none focus:ring-2 focus:ring-emerald">
-            <textarea id="condition" placeholder="Summary of patient's condition..." class="w-full min-h-24 p-4 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald"></textarea>
-        </div>
-
-        <button onclick="generatePass()" class="w-full min-h-14 bg-crimson text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-crimson/90 transition">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
-            Generate & Send Code
-        </button>
-    </div>
-
-    <!-- Generated State (Hidden by default) -->
-    <div id="generatedState" class="hidden text-center space-y-6 py-10">
-        <!-- Mock QR Code drawn with CSS Grid -->
-        <div class="w-64 h-64 mx-auto bg-white p-4 rounded-2xl border-4 border-slateDark grid grid-cols-12 gap-0.5">
-            <!-- Generating a random-looking pattern -->
-            <script>
-                for(let i=0; i<144; i++) {
-                    const isBlack = Math.random() > 0.5 ? 'bg-slateDark' : 'bg-white';
-                    document.write(`<div class="w-full h-full ${isBlack}"></div>`);
-                }
-            </script>
-        </div>
-        
+    <!-- Input Form -->
+    <div id="referralForm" class="bg-white p-4 rounded-xl border border-slate-200 mb-6 space-y-4">
         <div>
-            <p class="text-xs font-bold text-slate-500 uppercase">Referral Code</p>
-            <p class="text-2xl font-black text-slateDark">#REF-8821</p>
+            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Patient Name *</label>
+            <input type="text" id="patient_name" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-slate-50 text-base font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="e.g., Amina Yusuf">
         </div>
 
-        <button class="w-full min-h-14 bg-amber text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-amber/90 transition">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-            Sent via Offline SMS
+        <div>
+            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Destination Center *</label>
+            <select id="center_select" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-slate-50 text-base font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                <option value="" disabled selected>Loading centers...</option>
+            </select>
+        </div>
+
+        <div>
+            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-2">Reason for Referral *</label>
+            <div class="flex flex-wrap gap-2 mb-3">
+                <button type="button" onclick="addTag('Obstructed Labor')" class="px-3 py-1 bg-red-50 text-red-700 text-xs font-bold rounded-full border border-red-200 hover:bg-red-100">Obstructed Labor</button>
+                <button type="button" onclick="addTag('Severe Bleeding')" class="px-3 py-1 bg-red-50 text-red-700 text-xs font-bold rounded-full border border-red-200 hover:bg-red-100">Severe Bleeding</button>
+                <button type="button" onclick="addTag('High BP / Preeclampsia')" class="px-3 py-1 bg-amber-50 text-amber-700 text-xs font-bold rounded-full border border-amber-200 hover:bg-amber-100">High BP</button>
+                <button type="button" onclick="addTag('Facility at Capacity')" class="px-3 py-1 bg-slate-100 text-slate-700 text-xs font-bold rounded-full border border-slate-200 hover:bg-slate-200">Center Full</button>
+            </div>
+            <textarea id="reason" rows="3" class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="Describe the reason for referral..."></textarea>
+        </div>
+
+        <button onclick="generateReferral()" class="w-full min-h-14 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-700 transition">
+            Generate Referral & Code
         </button>
-        
-        <button onclick="resetReferral()" class="text-sm font-bold text-slate-500 underline hover:text-slateDark">Create Another</button>
+    </div>
+
+    <!-- Result Card -->
+    <div id="referralCard" class="hidden bg-white p-6 rounded-2xl border-2 border-dashed border-slate-300 text-center space-y-4">
+        <p class="text-[10px] font-black uppercase text-slate-400">Referral Code</p>
+        <h2 id="displayCode" class="text-4xl font-black text-slate-800 tracking-wider"></h2>
+        <div id="qrcode" class="flex justify-center my-4"></div>
+        <div class="text-left bg-slate-50 p-4 rounded-xl space-y-2">
+            <p class="text-xs"><span class="font-bold text-slate-500">Patient:</span> <span id="displayName" class="font-bold text-slate-800"></span></p>
+            <p class="text-xs"><span class="font-bold text-slate-500">Destination:</span> <span id="displayFacility" class="font-bold text-slate-800"></span></p>
+            <p class="text-xs"><span class="font-bold text-slate-500">Reason:</span> <span id="displayReason" class="font-bold text-slate-800"></span></p>
+        </div>
+        <button onclick="window.print()" class="w-full min-h-12 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition">Print / Save as PDF</button>
+        <a href="/" class="block text-sm font-bold text-slate-500 hover:text-slate-800">Return Home</a>
     </div>
 </div>
 
 <script>
-    function generatePass() {
-        document.getElementById('inputState').classList.add('hidden');
-        document.getElementById('generatedState').classList.remove('hidden');
+let currentEncounterId = null;
+
+// Read encounter_id + name from URL (when arriving via "Refer Patient" button)
+const params = new URLSearchParams(window.location.search);
+if (params.get('encounter_id')) currentEncounterId = params.get('encounter_id');
+if (params.get('patient_name')) document.getElementById('patient_name').value = params.get('patient_name');
+
+// Load centers
+fetch('/api/centers')
+    .then(res => res.json())
+    .then(centers => {
+        const select = document.getElementById('center_select');
+        select.innerHTML = '<option value="" disabled selected>Select a destination center...</option>';
+        centers.forEach(c => {
+            select.innerHTML += `<option value="${c.id}">${c.name} (${c.location})</option>`;
+        });
+    });
+
+function addTag(text) {
+    const t = document.getElementById('reason');
+    t.value += (t.value ? ', ' : '') + text;
+}
+
+async function generateReferral() {
+    const patientName = document.getElementById('patient_name').value.trim();
+    const centerId = document.getElementById('center_select').value;
+    const reason = document.getElementById('reason').value.trim();
+    if (!patientName || !centerId || !reason) { alert("Please fill in all required fields."); return; }
+
+    const body = { patient_name: patientName, center_id: centerId, reason: reason };
+    if (currentEncounterId) body.encounter_id = currentEncounterId;
+
+    try {
+        const response = await fetch('/api/referral', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        const raw = await response.text();
+        let data; try { data = JSON.parse(raw); } catch (e) { throw new Error("Server returned invalid response."); }
+        if (!response.ok) throw new Error(data.error || 'Server error');
+
+        document.getElementById('referralForm').classList.add('hidden');
+        document.getElementById('referralCard').classList.remove('hidden');
+        document.getElementById('displayCode').innerText = data.referral_code;
+        document.getElementById('displayName').innerText = data.patient_name;
+        document.getElementById('displayFacility').innerText = data.facility;
+        document.getElementById('displayReason').innerText = data.reason;
+
+        document.getElementById('qrcode').innerHTML = "";
+        new QRCode(document.getElementById("qrcode"), {
+            text: data.referral_code, width: 150, height: 150,
+            colorDark: "#0f172a", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.H
+        });
+    } catch (error) {
+        alert('Error: ' + error.message);
     }
-    function resetReferral() {
-        document.getElementById('inputState').classList.remove('hidden');
-        document.getElementById('generatedState').classList.add('hidden');
-    }
+}
 </script>
 {% endblock %}
