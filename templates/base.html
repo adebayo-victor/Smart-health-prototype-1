@@ -2,78 +2,72 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SmartHealth PWA</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="description" content="SmartHealth Prototype - Offline-first clinical decision support">
+    <title>SmartHealth</title>
     
-    <!-- PWA MANIFEST LINK (ADD THIS) -->
-    <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#0F172A">
-    
-    <!-- Tailwind CSS CDN -->
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Custom Design Tokens -->
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        emerald: '#059669',
-                        amber: '#D97706',
-                        crimson: '#DC2626',
-                        slateDark: '#0F172A',
-                        surfaceLight: '#F8FAFC',
-                        skyBlue: '#0284C7',
+                        emerald: { 50: '#ecfdf5', 100: '#d1fae5', 500: '#10b981', 600: '#059669', 700: '#047857', 900: '#064e3b' },
+                        slate: { 50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a' },
+                        amber: { 50: '#fffbeb', 100: '#fef3c7', 500: '#f59e0b', 600: '#d97706', 700: '#b45309' },
+                        red: { 50: '#fef2f2', 100: '#fee2e2', 500: '#ef4444', 600: '#dc2626', 700: '#b91c1c' }
                     }
                 }
             }
         }
     </script>
     
-    <style>
-        body { background-color: #F8FAFC; color: #0F172A; font-family: system-ui, -apple-system, sans-serif; }
-    </style>
+    <!-- PWA Manifest & Service Worker -->
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="icon" type="image/png" href="/static/icons/icon-192x192.png">
 </head>
-<body class="min-h-screen flex flex-col">
-    
-    <!-- Header -->
-    <header class="bg-slateDark text-white p-4 shadow-md">
-        <div class="max-w-2xl mx-auto flex flex-col gap-3">
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 bg-emerald rounded-lg flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                    </svg>
-                </div>
-                <h1 class="text-lg font-black tracking-tight">SmartHealth PWA</h1>
-            </div>
-            <!-- Quick Nav -->
-            <nav class="flex gap-2 text-xs font-bold overflow-x-auto pb-1">
-                <a href="/" class="px-3 py-1 bg-white/10 rounded-full hover:bg-white/20 whitespace-nowrap">Home</a>
-                <a href="/dashboard" class="px-3 py-1 bg-white/10 rounded-full hover:bg-white/20 whitespace-nowrap">Dashboard</a>
-                <a href="/translator" class="px-3 py-1 bg-white/10 rounded-full hover:bg-white/20 whitespace-nowrap">Translator</a>
-                <a href="/triage" class="px-3 py-1 bg-white/10 rounded-full hover:bg-white/20 whitespace-nowrap">Triage</a>
-                <a href="/diagnosis" class="px-3 py-1 bg-white/10 rounded-full hover:bg-white/20 whitespace-nowrap">Diagnosis</a>
-                <a href="/referral" class="px-3 py-1 bg-white/10 rounded-full hover:bg-white/20 whitespace-nowrap">Referral</a>
-            </nav>
-        </div>
-    </header>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans">
 
-    <!-- Main Content -->
-    <main class="flex-1 max-w-2xl mx-auto w-full p-6">
+    <!-- Top Navigation -->
+    <nav class="bg-slate-900 text-white sticky top-0 z-50 shadow-md">
+        <div class="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+            <a href="/" class="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                </svg>
+                <span class="font-black text-lg tracking-tight">SmartHealth</span>
+            </a>
+            
+            <!-- Nav Links -->
+            <div class="flex items-center gap-2 text-xs font-bold">
+                <a href="/dashboard" class="px-3 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 transition">Ledger</a>
+                <a href="/referral" class="px-3 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 transition">Referral</a>
+                <a href="/lookup" class="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 transition text-white">Lookup</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-2xl w-full mx-auto px-4 py-6">
         {% block content %}{% endblock %}
     </main>
 
-    <!-- SERVICE WORKER REGISTRATION (ADD THIS AT THE BOTTOM) -->
+    <!-- Simple Footer -->
+    <footer class="text-center py-6 text-xs text-slate-400 border-t border-slate-200 mt-auto">
+        <p>SmartHealth Prototype &copy; 2026</p>
+    </footer>
+
+    <!-- Service Worker Registration -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('/static/sw.js')
-                    .then(reg => console.log('SW registered!', reg))
-                    .catch(err => console.log('SW registration failed: ', err));
+                    .then(reg => console.log('SW registered:', reg.scope))
+                    .catch(err => console.log('SW registration failed:', err));
             });
         }
     </script>
-
 </body>
 </html>
