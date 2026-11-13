@@ -120,7 +120,6 @@ def dashboard():
 # ==========================================
 
 # --- TRIAGE ROUTE (THE MISSING PIECE) ---
-# --- TRIAGE ROUTE (Strict Vitals Only) ---
 @app.route('/api/triage', methods=['POST'])
 def triage_assessment():
     try:
@@ -190,20 +189,11 @@ def triage_assessment():
         # Format Output
         trigger_text = ", ".join(triggers) if triggers else "All recorded vitals within stable ranges"
         note_text = " ".join(notes) if notes else "Patient is stable."
-        
-        # TC Steps based on tier
-        if tier == 'RED':
-            tc_steps = ["Re-check all vitals immediately to confirm.", "Prepare for immediate referral."]
-        elif tier == 'YELLOW':
-            tc_steps = ["Monitor patient closely.", "Re-assess vitals in 1-2 hours."]
-        else:
-            tc_steps = ["Routine follow-up as needed."]
 
-        # Save to Database
+        # Save to Database (No TC steps for Triage)
         encounter = Encounter(patient_name=patient_name)
         encounter.triage_tier = tier
         encounter.triage_notes = note_text
-        encounter.tc_steps_triage = json.dumps(tc_steps)
         
         # Save raw vitals as JSON string
         vitals_dict = {k: v for k, v in {'temp': temp, 'sys_bp': sys_bp, 'dia_bp': dia_bp, 'spo2': spo2, 'hr': hr}.items() if v is not None}
@@ -218,8 +208,7 @@ def triage_assessment():
             "triage_data": {
                 "tier": tier,
                 "trigger": trigger_text,
-                "notes": note_text,
-                "tc_steps": tc_steps
+                "notes": note_text
             }
         })
     except Exception as e:
