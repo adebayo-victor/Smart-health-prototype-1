@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex flex-col items-center justify-center min-h-[60vh] space-y-8 text-center">
+    <div>
+        <h2 class="text-2xl font-black text-slateDark mb-2">Welcome</h2>
+        <p class="text-slate-500 text-sm">Select your mode to begin</p>
+    </div>
+
+    <div class="w-full space-y-4 max-w-sm">
+        <a href="/login" class="block w-full min-h-14 bg-emerald hover:bg-emerald/90 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-md">
+            Proceed as Health Worker
+        </a>
+        
+        <button class="block w-full min-h-14 bg-white border border-slate-200 hover:bg-slate-50 text-slateDark rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-sm">
+            Proceed as Patient
+        </button>
+    </div>
+
+    <p class="text-xs text-slate-400 mt-8">Offline-first clinical support for Nigerian communities.</p>
+</div>
+{% endblock %}
