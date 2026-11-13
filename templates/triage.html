@@ -6,98 +6,179 @@
         <a href="/" class="w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-full transition">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
         </a>
-        <h1 class="text-xl font-black text-slateDark">Offline Triage Settler</h1>
+        <h1 class="text-xl font-black text-slate-800">Offline Triage Settler</h1>
     </div>
 
-    <div class="grid grid-cols-2 gap-4 mb-8">
-        <!-- Temp -->
-        <div class="bg-white p-4 rounded-xl border border-slate-200">
-            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-2">Temperature (°C)</label>
-            <input type="number" id="temp" step="0.1" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-slate-50 text-xl font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald" placeholder="37.0">
+    <!-- Patient Info -->
+    <div class="bg-white p-4 rounded-xl border border-slate-200 mb-4 space-y-3">
+        <div>
+            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Patient Name *</label>
+            <input type="text" id="patient_name" class="w-full min-h-10 px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="e.g., Amina Yusuf">
         </div>
-        <!-- Sys BP -->
-        <div class="bg-white p-4 rounded-xl border border-slate-200">
-            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-2">Systolic BP</label>
-            <input type="number" id="sys_bp" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-slate-50 text-xl font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald" placeholder="120">
-        </div>
-        <!-- Dia BP -->
-        <div class="bg-white p-4 rounded-xl border border-slate-200">
-            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-2">Diastolic BP</label>
-            <input type="number" id="dia_bp" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-slate-50 text-xl font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald" placeholder="80">
-        </div>
-        <!-- SpO2 -->
-        <div class="bg-white p-4 rounded-xl border border-slate-200">
-            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-2">SpO2 (%)</label>
-            <input type="number" id="spo2" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-slate-50 text-xl font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald" placeholder="98">
+        <div class="grid grid-cols-2 gap-3">
+            <div>
+                <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Age</label>
+                <input type="number" id="age" class="w-full min-h-10 px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="e.g., 28">
+            </div>
+            <div>
+                <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Gender</label>
+                <select id="gender" class="w-full min-h-10 px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <option value="female">Female</option>
+                    <option value="male">Male</option>
+                </select>
+            </div>
         </div>
     </div>
+
+    <!-- Vitals Grid -->
+    <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="bg-white p-3 rounded-xl border border-slate-200">
+            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Temp (°C)</label>
+            <input type="number" id="temp" step="0.1" class="w-full min-h-10 px-2 rounded-lg border border-slate-200 bg-slate-50 text-lg font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="37.0">
+        </div>
+        <div class="bg-white p-3 rounded-xl border border-slate-200">
+            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Heart Rate</label>
+            <input type="number" id="hr" class="w-full min-h-10 px-2 rounded-lg border border-slate-200 bg-slate-50 text-lg font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="BPM">
+        </div>
+        <div class="bg-white p-3 rounded-xl border border-slate-200">
+            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Sys BP</label>
+            <input type="number" id="sys_bp" class="w-full min-h-10 px-2 rounded-lg border border-slate-200 bg-slate-50 text-lg font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="120">
+        </div>
+        <div class="bg-white p-3 rounded-xl border border-slate-200">
+            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Dia BP</label>
+            <input type="number" id="dia_bp" class="w-full min-h-10 px-2 rounded-lg border border-slate-200 bg-slate-50 text-lg font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="80">
+        </div>
+        <div class="bg-white p-3 rounded-xl border border-slate-200 col-span-2">
+            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">SpO2 (%)</label>
+            <input type="number" id="spo2" class="w-full min-h-10 px-2 rounded-lg border border-slate-200 bg-slate-50 text-lg font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="98">
+        </div>
+    </div>
+
+    <!-- Meds Note -->
+    <div class="bg-white p-3 rounded-xl border border-slate-200 mb-6">
+        <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Current Medications / Notes</label>
+        <textarea id="meds" rows="2" class="w-full px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="e.g., Took Paracetamol this morning"></textarea>
+    </div>
+
+    <!-- Process Button -->
+    <button onclick="processTriage()" class="w-full min-h-14 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-700 transition mb-6">
+        Process Triage
+    </button>
 
     <!-- Result Box -->
-    <div id="triageResult" class="hidden p-6 rounded-2xl border-2 flex items-center gap-4 transition-all">
-        <div id="resultIcon"></div>
-        <div>
-            <p id="resultTier" class="text-2xl font-black text-slateDark"></p>
-            <p id="resultRule" class="text-sm font-bold text-slate-600 mt-1"></p>
+    <div id="triageResult" class="hidden p-5 rounded-2xl border-2 transition-all mb-6">
+        <div class="flex items-center gap-4 mb-3">
+            <div id="resultIcon"></div>
+            <div>
+                <p id="resultTier" class="text-2xl font-black text-slate-800"></p>
+                <p id="resultTrigger" class="text-sm font-bold text-slate-600 mt-1"></p>
+            </div>
         </div>
+        <p id="resultNotes" class="text-sm text-slate-700 bg-white/50 p-3 rounded-lg border border-slate-200/50"></p>
+        
+        <!-- TC Steps -->
+        <div class="mt-4 space-y-2" id="tcStepsContainer"></div>
+
+        <!-- Referral Button (Shows if RED or YELLOW) -->
+        <a id="referralBtn" href="/referral" class="hidden mt-4 w-full min-h-12 bg-red-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-700 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+            🚑 Refer Patient
+        </a>
+   6
     </div>
 </div>
 
 <script>
-    const inputs = ['temp', 'sys_bp', 'dia_bp', 'spo2'];
-    inputs.forEach(id => document.getElementById(id).addEventListener('input', calculateTriage));
+let currentEncounterId = null;
 
-    function calculateTriage() {
-        const temp = parseFloat(document.getElementById('temp').value);
-        const sys = parseFloat(document.getElementById('sys_bp').value);
-        const dia = parseFloat(document.getElementById('dia_bp').value);
-        const spo2 = parseFloat(document.getElementById('spo2').value);
-
-        let tier = 'GREEN';
-        let rule = 'All recorded vitals within stable physiological ranges';
-
-        // RED Checks
-        if (temp > 39.5) { tier = 'RED'; rule = 'Critical Hyperthermia (Temp > 39.5°C)'; }
-        else if (sys > 160) { tier = 'RED'; rule = 'Severe Systolic Hypertension (Sys BP > 160)'; }
-        else if (dia > 100) { tier = 'RED'; rule = 'Severe Diastolic Hypertension (Dia BP > 100)'; }
-        else if (spo2 < 90) { tier = 'RED'; rule = 'Critical Hypoxemia (SpO2 < 90%)'; }
-        // AMBER Checks
-        else if (temp > 38.5) { tier = 'AMBER'; rule = 'High Fever (Temp > 38.5°C)'; }
-        else if (sys > 140) { tier = 'AMBER'; rule = 'Elevated Systolic BP (Sys BP > 140)'; }
-        else if (dia > 90) { tier = 'AMBER'; rule = 'Elevated Diastolic BP (Dia BP > 90)'; }
-
-        // Only show if at least one input is filled
-        if (!isNaN(temp) || !isNaN(sys) || !isNaN(dia) || !isNaN(spo2)) {
-            displayResult(tier, rule);
-        } else {
-            document.getElementById('triageResult').classList.add('hidden');
-        }
+async function processTriage() {
+    const patientName = document.getElementById('patient_name').value.trim();
+    if (!patientName) {
+        alert("Patient name is required to create a record.");
+        return;
     }
 
-    function displayResult(tier, rule) {
-        const box = document.getElementById('triageResult');
-        const tierText = document.getElementById('resultTier');
-        const ruleText = document.getElementById('resultRule');
-        const icon = document.getElementById('resultIcon');
+    const payload = {
+        patient_name: patientName,
+        encounter_id: currentEncounterId,
+        age: document.getElementById('age').value || null,
+        gender: document.getElementById('gender').value,
+        temp: parseFloat(document.getElementById('temp').value) || null,
+        hr: parseFloat(document.getElementById('hr').value) || null,
+        sys_bp: parseFloat(document.getElementById('sys_bp').value) || null,
+        dia_bp: parseFloat(document.getElementById('dia_bp').value) || null,
+        spo2: parseFloat(document.getElementById('spo2').value) || null,
+        meds: document.getElementById('meds').value || null
+    };
 
-        box.classList.remove('hidden', 'bg-red-50', 'border-crimson', 'bg-amber/10', 'border-amber', 'bg-emerald/10', 'border-emerald');
+    try {
+        const response = await fetch('/api/triage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
         
-        if (tier === 'RED') {
-            box.classList.add('bg-red-50', 'border-crimson');
-            tierText.innerText = 'RED TIER';
-            tierText.className = 'text-2xl font-black text-crimson';
-            icon.innerHTML = '<svg class="w-10 h-10 text-crimson" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>';
-        } else if (tier === 'AMBER') {
-            box.classList.add('bg-amber/10', 'border-amber');
-            tierText.innerText = 'AMBER TIER';
-            tierText.className = 'text-2xl font-black text-amber';
-            icon.innerHTML = '<svg class="w-10 h-10 text-amber" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>';
-        } else {
-            box.classList.add('bg-emerald/10', 'border-emerald');
-            tierText.innerText = 'GREEN TIER';
-            tierText.className = 'text-2xl font-black text-emerald';
-            icon.innerHTML = '<svg class="w-10 h-10 text-emerald" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
-        }
-        ruleText.innerText = rule;
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Server error');
+
+        currentEncounterId = data.encounter_id;
+        displayResult(data.triage_data);
+    } catch (error) {
+        alert('Error: ' + error.message);
     }
+}
+
+function displayResult(data) {
+    const box = document.getElementById('triageResult');
+    const tierText = document.getElementById('resultTier');
+    const triggerText = document.getElementById('resultTrigger');
+    const notesText = document.getElementById('resultNotes');
+    const icon = document.getElementById('resultIcon');
+    const referralBtn = document.getElementById('referralBtn');
+
+    box.classList.remove('hidden', 'bg-red-50', 'border-red-500', 'bg-amber-50', 'border-amber-500', 'bg-emerald-50', 'border-emerald-500');
+    referralBtn.classList.add('hidden');
+
+    // Pass encounter_id to referral link
+    if (currentEncounterId) {
+        referralBtn.href = `/referral?encounter_id=${currentEncounterId}&patient_name=${encodeURIComponent(document.getElementById('patient_name').value)}`;
+    }
+
+    if (data.tier === 'RED') {
+        box.classList.add('bg-red-50', 'border-red-500');
+        tierText.innerText = '🔴 RED SEVERITY';
+        tierText.className = 'text-2xl font-black text-red-700';
+        icon.innerHTML = '<svg class="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>';
+        referralBtn.classList.remove('hidden');
+    } else if (data.tier === 'YELLOW') {
+        box.classList.add('bg-amber-50', 'border-amber-500');
+        tierText.innerText = '🟡 YELLOW SEVERITY';
+        tierText.className = 'text-2xl font-black text-amber-700';
+        icon.innerHTML = '<svg class="w-10 h-10 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>';
+        referralBtn.classList.remove('hidden');
+        referralBtn.classList.replace('bg-red-600', 'bg-amber-600');
+        referralBtn.classList.replace('hover:bg-red-700', 'hover:bg-amber-700');
+    } else {
+        box.classList.add('bg-emerald-50', 'border-emerald-500');
+        tierText.innerText = '🟢 GREEN SEVERITY';
+        tierText.className = 'text-2xl font-black text-emerald-700';
+        icon.innerHTML = '<svg class="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+    }
+
+    triggerText.innerText = `Triggered by: ${data.trigger}`;
+    notesText.innerText = data.notes;
+
+    // Render TC Steps
+    const tcContainer = document.getElementById('tcStepsContainer');
+    tcContainer.innerHTML = '<p class="text-[10px] font-black uppercase text-slate-500 mb-2">TC: Confirmation Checklist</p>';
+    data.tc_steps.forEach(step => {
+        tcContainer.innerHTML += `
+            <label class="flex items-start gap-3 p-3 bg-white rounded-lg border border-slate-200 cursor-pointer hover:bg-slate-50 transition">
+                <input type="checkbox" class="mt-1 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500">
+                <span class="text-sm font-medium text-slate-700">${step}</span>
+            </label>
+        `;
+    });
+}
 </script>
 {% endblock %}
