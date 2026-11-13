@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="pb-20">
+    <div class="flex items-center gap-3 mb-6">
+        <a href="/" class="w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-full transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+        </a>
+        <h1 class="text-xl font-black text-slateDark">Referral Pass</h1>
+    </div>
+
+    <!-- Input State -->
+    <div id="inputState" class="space-y-6">
+        <div class="space-y-2">
+            <label class="text-xs font-bold uppercase text-slate-500">Search Previous Clients</label>
+            <input type="text" placeholder="Type patient name..." class="w-full min-h-12 px-4 rounded-xl border border-slate-200 bg-white font-bold focus:outline-none focus:ring-2 focus:ring-emerald">
+        </div>
+
+        <div class="space-y-2">
+            <label class="text-xs font-bold uppercase text-slate-500">Manual Entry Fallback</label>
+            <input type="text" id="patientName" placeholder="Patient Name" class="w-full min-h-12 px-4 rounded-xl border border-slate-200 bg-white font-bold focus:outline-none focus:ring-2 focus:ring-emerald">
+            <textarea id="condition" placeholder="Summary of patient's condition..." class="w-full min-h-24 p-4 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald"></textarea>
+        </div>
+
+        <button onclick="generatePass()" class="w-full min-h-14 bg-crimson text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-crimson/90 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" /></svg>
+            Generate & Send Code
+        </button>
+    </div>
+
+    <!-- Generated State (Hidden by default) -->
+    <div id="generatedState" class="hidden text-center space-y-6 py-10">
+        <!-- Mock QR Code drawn with CSS Grid -->
+        <div class="w-64 h-64 mx-auto bg-white p-4 rounded-2xl border-4 border-slateDark grid grid-cols-12 gap-0.5">
+            <!-- Generating a random-looking pattern -->
+            <script>
+                for(let i=0; i<144; i++) {
+                    const isBlack = Math.random() > 0.5 ? 'bg-slateDark' : 'bg-white';
+                    document.write(`<div class="w-full h-full ${isBlack}"></div>`);
+                }
+            </script>
+        </div>
+        
+        <div>
+            <p class="text-xs font-bold text-slate-500 uppercase">Referral Code</p>
+            <p class="text-2xl font-black text-slateDark">#REF-8821</p>
+        </div>
+
+        <button class="w-full min-h-14 bg-amber text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-amber/90 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+            Sent via Offline SMS
+        </button>
+        
+        <button onclick="resetReferral()" class="text-sm font-bold text-slate-500 underline hover:text-slateDark">Create Another</button>
+    </div>
+</div>
+
+<script>
+    function generatePass() {
+        document.getElementById('inputState').classList.add('hidden');
+        document.getElementById('generatedState').classList.remove('hidden');
+    }
+    function resetReferral() {
+        document.getElementById('inputState').classList.remove('hidden');
+        document.getElementById('generatedState').classList.add('hidden');
+    }
+</script>
+{% endblock %}
