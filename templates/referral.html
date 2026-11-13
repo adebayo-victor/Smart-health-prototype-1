@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 {% block content %}
 <div class="pb-32">
@@ -40,17 +39,23 @@
         </button>
     </div>
 
-    <!-- Result Card -->
+    <!-- Result Card (Hidden initially) -->
     <div id="referralCard" class="hidden bg-white p-6 rounded-2xl border-2 border-dashed border-slate-300 text-center space-y-4">
         <p class="text-[10px] font-black uppercase text-slate-400">Referral Code</p>
         <h2 id="displayCode" class="text-4xl font-black text-slate-800 tracking-wider"></h2>
-        <div id="qrcode" class="flex justify-center my-4"></div>
+        
+        <!-- Backend-generated QR Image -->
+        <img id="qrImg" class="mx-auto w-40 h-40 rounded-lg border border-slate-200 bg-white p-2" alt="Referral QR" style="display:none">
+        
         <div class="text-left bg-slate-50 p-4 rounded-xl space-y-2">
             <p class="text-xs"><span class="font-bold text-slate-500">Patient:</span> <span id="displayName" class="font-bold text-slate-800"></span></p>
             <p class="text-xs"><span class="font-bold text-slate-500">Destination:</span> <span id="displayFacility" class="font-bold text-slate-800"></span></p>
             <p class="text-xs"><span class="font-bold text-slate-500">Reason:</span> <span id="displayReason" class="font-bold text-slate-800"></span></p>
         </div>
-        <button onclick="window.print()" class="w-full min-h-12 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition">Print / Save as PDF</button>
+        
+        <button onclick="window.print()" class="w-full min-h-12 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition">
+            Print / Save as PDF
+        </button>
         <a href="/" class="block text-sm font-bold text-slate-500 hover:text-slate-800">Return Home</a>
     </div>
 </div>
@@ -58,12 +63,12 @@
 <script>
 let currentEncounterId = null;
 
-// Read encounter_id + name from URL (when arriving via "Refer Patient" button)
+// Read encounter_id + name from URL (when arriving via "Refer Patient" button from Triage/Diagnosis)
 const params = new URLSearchParams(window.location.search);
 if (params.get('encounter_id')) currentEncounterId = params.get('encounter_id');
 if (params.get('patient_name')) document.getElementById('patient_name').value = params.get('patient_name');
 
-// Load centers
+// 1. Load Centers on Page Load
 fetch('/api/centers')
     .then(res => res.json())
     .then(centers => {
@@ -74,40 +79,52 @@ fetch('/api/centers')
         });
     });
 
+// 2. Quick Tags Logic
 function addTag(text) {
-    const t = document.getElementById('reason');
-    t.value += (t.value ? ', ' : '') + text;
+    const textarea = document.getElementById('reason');
+    textarea.value += (textarea.value ? ', ' : '') + text;
 }
 
+// 3. Generate Referral
 async function generateReferral() {
     const patientName = document.getElementById('patient_name').value.trim();
     const centerId = document.getElementById('center_select').value;
     const reason = document.getElementById('reason').value.trim();
-    if (!patientName || !centerId || !reason) { alert("Please fill in all required fields."); return; }
+
+    if (!patientName || !centerId || !reason) {
+        alert("Please fill in all required fields.");
+        return;
+    }
 
     const body = { patient_name: patientName, center_id: centerId, reason: reason };
     if (currentEncounterId) body.encounter_id = currentEncounterId;
 
     try {
         const response = await fetch('/api/referral', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
         });
+
         const raw = await response.text();
-        let data; try { data = JSON.parse(raw); } catch (e) { throw new Error("Server returned invalid response."); }
+        let data;
+        try { data = JSON.parse(raw); } catch (e) { throw new Error("Server returned invalid response."); }
         if (!response.ok) throw new Error(data.error || 'Server error');
 
+        // Hide form, show card
         document.getElementById('referralForm').classList.add('hidden');
         document.getElementById('referralCard').classList.remove('hidden');
+        
         document.getElementById('displayCode').innerText = data.referral_code;
         document.getElementById('displayName').innerText = data.patient_name;
         document.getElementById('displayFacility').innerText = data.facility;
         document.getElementById('displayReason').innerText = data.reason;
 
-        document.getElementById('qrcode').innerHTML = "";
-        new QRCode(document.getElementById("qrcode"), {
-            text: data.referral_code, width: 150, height: 150,
-            colorDark: "#0f172a", colorLight: "#ffffff", correctLevel: QRCode.CorrectLevel.H
-        });
+        // Display Backend-Generated QR Code
+        const qrImg = document.getElementById('qrImg');
+        qrImg.src = data.referral_qr;
+        qrImg.style.display = 'block';
+
     } catch (error) {
         alert('Error: ' + error.message);
     }
