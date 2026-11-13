@@ -112,8 +112,34 @@ def referral(): return render_template('referral.html')
 
 @app.route('/dashboard')
 def dashboard():
-    encounters = Encounter.query.order_by(Encounter.created_at.desc()).all()
-    return render_template('dashboard.html', encounters=encounters)
+    # Get filter parameters from the URL (default to 'all')
+    filter_tier = request.args.get('tier', 'all')
+    filter_stage = request.args.get('stage', 'all')
+    
+    # Start with all encounters, ordered by newest first
+    query = Encounter.query.order_by(Encounter.created_at.desc())
+    
+    # Apply Tier Filter
+    if filter_tier != 'all':
+        query = query.filter(Encounter.triage_tier == filter_tier.upper())
+        
+    # Apply Stage Filter
+    if filter_stage != 'all':
+        # Map friendly stage names to database values
+        stage_map = {
+            'triage': 'triage',
+            'diagnosis': 'diagnosis',
+            'referred': 'referral' # Matches the stage where referral happens
+        }
+        if filter_stage in stage_map:
+            query = query.filter(Encounter.current_stage == stage_map[filter_stage])
+            
+    encounters = query.all()
+    
+    return render_template('dashboard.html', 
+                           encounters=encounters, 
+                           current_tier=filter_tier, 
+                           current_stage=filter_stage)
 
 # ==========================================
 # 5. BACKEND API ROUTES
