@@ -198,7 +198,7 @@ def extract_search_keywords(text):
             keywords.append(word)
     return list(set(keywords))
 
-def extract_keywords_and_answer(translated_text, past_memories_text):
+def extract_keywords_and_answer(translated_text, past_memories_text, target_language_name):
     prompt = f"""
     You are a trusted, empathetic health worker speaking to a Nigerian woman. 
     Answer her question directly, simply, and calmly. If there are red-flag symptoms, advise her to see a doctor immediately.
@@ -212,7 +212,7 @@ def extract_keywords_and_answer(translated_text, past_memories_text):
     Return ONLY valid JSON in this exact format:
     {{
       "answer_english": "The medical answer in simple English.",
-      "answer_hausa": "The translation of your medical advice in simple Hausa.",
+      "answer_local": "The translation of your medical advice in simple {target_language_name}.",
       "keywords": ["word1", "word2", "number3"] 
     }}
     """
@@ -228,8 +228,7 @@ def extract_keywords_and_answer(translated_text, past_memories_text):
         return json.loads(raw.strip())
     except Exception as e:
         logger.error(f"❌ AI Extraction Error: {e}")
-        return {"answer_english": "Error", "answer_hausa": "Na sami matsala, gwada sake.", "keywords": []}
-
+        return {"answer_english": "Error", "answer_local": "Na sami matsala, gwada sake.", "keywords": []}
 # ==========================================
 # 5. FRONTEND ROUTES
 # ==========================================
@@ -532,7 +531,8 @@ def tts_instruction():
         logger.error(f"❌ TTS Instruction Error: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/patient_voice', methods=['POST'])
+
+            @app.route('/api/patient_voice', methods=['POST'])
 def patient_voice():
     try:
         phone_number = request.form.get('phone_number')
@@ -542,13 +542,8 @@ def patient_voice():
         if not phone_number or not audio_file:
             return jsonify({"error": "Missing phone number or audio."}), 400
 
-        # 🛡️ SAFETY CHECK: Read the file and check its size
         audio_data = audio_file.read()
-        file_size = len(audio_data)
-        
-        # If the file is less than 2KB, it's basically empty (user tapped too fast or mic failed)
-        if file_size < 2000:
-            logger.warning(f"⚠️ Audio file too small: {file_size} bytes")
+        if len(audio_data) < 2000:
             return jsonify({"error": "Audio too short. Please hold the mic and speak for at least 2 seconds."}), 400
 
         patient = Patient.query.filter_by(phone_number=phone_number).first()
@@ -557,23 +552,22 @@ def patient_voice():
             db.session.add(patient)
             db.session.flush()
 
-        # 3. Speech to Text (Groq Whisper) with error handling
+        # 1. Transcribe
         try:
             transcription = groq_client.audio.transcriptions.create(
                 file=(audio_file.filename or "recording.webm", audio_data, "audio/webm"),
                 model="whisper-large-v3",
-                prompt=f"This is a medical question in {language}.",
                 response_format="text"
             )
+            user_text = transcription.strip() if isinstance(transcription, str) else transcription.text.strip()
         except Exception as groq_err:
             logger.error(f"❌ Groq Transcription Failed: {groq_err}")
-            return jsonify({"error": "Could not understand the audio. Please speak clearly and try again."}), 400
+            return jsonify({"error": "Could not understand the audio. Please speak clearly."}), 400
 
-        # Groq returns a plain string when response_format="text"
-        user_text = transcription.strip() if isinstance(transcription, str) else transcription.text.strip()
         if not user_text:
-            return jsonify({"error": "No speech detected. Please try again."}), 400
+            return jsonify({"error": "No speech detected."}), 400
 
+        # 2. Translate to English for the AI
         translated_text = user_text
         if language != 'en':
             tr = litellm_client.chat.completions.create(
@@ -583,6 +577,7 @@ def patient_voice():
             )
             translated_text = tr.choices[0].message.content.strip()
 
+        # 3. Memory Retrieval
         short_term = ChatMessage.query.filter_by(patient_id=patient.id).order_by(ChatMessage.created_at.desc()).limit(10).all()
         short_term.reverse()
         short_term_text = "\n".join([f"{m.role}: {m.translated_text or m.original_text}" for m in short_term])
@@ -596,14 +591,19 @@ def patient_voice():
             ).order_by(MemoryIndex.created_at.desc()).limit(5).all()
             long_term_text = "\n".join([f"Past Context: {m.context_chunk}" for m in memories])
 
-        ai_response = extract_keywords_and_answer(translated_text, long_term_text)
+        # 4. AI Call (Passing the target language name)
+        lang_map = {'ha': 'Hausa', 'pcm': 'Nigerian Pidgin', 'en': 'English'}
+        target_lang_name = lang_map.get(language, 'Hausa')
+        
+        ai_response = extract_keywords_and_answer(translated_text, long_term_text, target_lang_name)
         
         answer_english = ai_response.get("answer_english", "")
-        answer_hausa = ai_response.get("answer_hausa", answer_english)
+        answer_local = ai_response.get("answer_local", answer_english) # The response in Hausa/Pidgin/English
         final_keywords = ai_response.get("keywords", [])
 
+        # 5. Save to DB
         user_msg = ChatMessage(patient_id=patient.id, role='user', original_text=user_text, translated_text=translated_text)
-        ai_msg = ChatMessage(patient_id=patient.id, role='ai', original_text=answer_hausa, translated_text=answer_english)
+        ai_msg = ChatMessage(patient_id=patient.id, role='ai', original_text=answer_local, translated_text=answer_english)
         db.session.add_all([user_msg, ai_msg])
 
         if final_keywords:
@@ -616,32 +616,25 @@ def patient_voice():
         
         db.session.commit()
 
-        voice_map = {'ha': 'ha-NG-MaryamNeural', 'pcm': 'en-NG-EzinneNeural', 'en': 'en-US-JennyNeural'}
-        voice = voice_map.get(language, 'ha-NG-MaryamNeural')
+        # 6. TEXT TO SPEECH (Using gTTS)
         audio_base64 = None
-
-        def run_tts():
-            nonlocal audio_base64
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                async def fetch():
-                    c = edge_tts.Communicate(text=answer_hausa, voice=voice)
-                    chunks = [ch["data"] async for ch in c.stream() if ch["type"] == "audio"]
-                    return b"".join(chunks)
-                audio_bytes = loop.run_until_complete(fetch())
-                audio_base64 = "data:audio/mpeg;base64," + base64.b64encode(audio_bytes).decode('utf-8')
-                loop.close()
-            except Exception:
-                pass
-
-        thread = threading.Thread(target=run_tts)
-        thread.start()
-        thread.join(timeout=15)
+        try:
+            # gTTS uses 'ha' for Hausa, and 'en' for both English and Pidgin (closest match)
+            gtts_lang = 'ha' if language == 'ha' else 'en'
+            
+            tts = gTTS(text=answer_local, lang=gtts_lang, slow=False)
+            audio_fp = io.BytesIO()
+            tts.write_to_fp(audio_fp)
+            audio_fp.seek(0)
+            audio_bytes = audio_fp.read()
+            audio_base64 = "data:audio/mp3;base64," + base64.b64encode(audio_bytes).decode('utf-8')
+            logger.info(f"✅ gTTS patient audio generated for {target_lang_name}.")
+        except Exception as e:
+            logger.error(f"❌ gTTS failed for patient: {e}")
 
         return jsonify({
             "user_text": user_text,
-            "ai_text_hausa": answer_hausa,
+            "ai_text_local": answer_local,
             "audio_url": audio_base64
         })
 
