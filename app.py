@@ -430,7 +430,8 @@ def patient_voice():
             logger.error(f"❌ Groq Transcription Failed: {groq_err}")
             return jsonify({"error": "Could not understand the audio. Please speak clearly and try again."}), 400
 
-        user_text = transcription.text.strip()
+        # Groq returns a plain string when response_format="text"
+        user_text = transcription.strip() if isinstance(transcription, str) else transcription.text.strip()
         if not user_text:
             return jsonify({"error": "No speech detected. Please try again."}), 400
 
