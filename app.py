@@ -63,5 +63,19 @@ def translate_audio():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Add these to your app.py
+
+@app.route('/triage')
+def triage():
+    return render_template('triage.html')
+
+@app.route('/diagnosis')
+def diagnosis():
+    return render_template('diagnosis.html')
+
+@app.route('/referral')
+def referral():
+    return render_template('referral.html')
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
