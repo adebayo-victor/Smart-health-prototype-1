@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="pb-20">
+    <div class="flex items-center gap-3 mb-6">
+        <a href="/" class="w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-full transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+        </a>
+        <h1 class="text-xl font-black text-slateDark">Offline Triage Settler</h1>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4 mb-8">
+        <!-- Temp -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200">
+            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-2">Temperature (°C)</label>
+            <input type="number" id="temp" step="0.1" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-slate-50 text-xl font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald" placeholder="37.0">
+        </div>
+        <!-- Sys BP -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200">
+            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-2">Systolic BP</label>
+            <input type="number" id="sys_bp" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-slate-50 text-xl font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald" placeholder="120">
+        </div>
+        <!-- Dia BP -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200">
+            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-2">Diastolic BP</label>
+            <input type="number" id="dia_bp" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-slate-50 text-xl font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald" placeholder="80">
+        </div>
+        <!-- SpO2 -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200">
+            <label class="text-[10px] font-bold text-slate-400 uppercase block mb-2">SpO2 (%)</label>
+            <input type="number" id="spo2" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-slate-50 text-xl font-black text-center focus:outline-none focus:ring-2 focus:ring-emerald" placeholder="98">
+        </div>
+    </div>
+
+    <!-- Result Box -->
+    <div id="triageResult" class="hidden p-6 rounded-2xl border-2 flex items-center gap-4 transition-all">
+        <div id="resultIcon"></div>
+        <div>
+            <p id="resultTier" class="text-2xl font-black text-slateDark"></p>
+            <p id="resultRule" class="text-sm font-bold text-slate-600 mt-1"></p>
+        </div>
+    </div>
+</div>
+
+<script>
+    const inputs = ['temp', 'sys_bp', 'dia_bp', 'spo2'];
+    inputs.forEach(id => document.getElementById(id).addEventListener('input', calculateTriage));
+
+    function calculateTriage() {
+        const temp = parseFloat(document.getElementById('temp').value);
+        const sys = parseFloat(document.getElementById('sys_bp').value);
+        const dia = parseFloat(document.getElementById('dia_bp').value);
+        const spo2 = parseFloat(document.getElementById('spo2').value);
+
+        let tier = 'GREEN';
+        let rule = 'All recorded vitals within stable physiological ranges';
+
+        // RED Checks
+        if (temp > 39.5) { tier = 'RED'; rule = 'Critical Hyperthermia (Temp > 39.5°C)'; }
+        else if (sys > 160) { tier = 'RED'; rule = 'Severe Systolic Hypertension (Sys BP > 160)'; }
+        else if (dia > 100) { tier = 'RED'; rule = 'Severe Diastolic Hypertension (Dia BP > 100)'; }
+        else if (spo2 < 90) { tier = 'RED'; rule = 'Critical Hypoxemia (SpO2 < 90%)'; }
+        // AMBER Checks
+        else if (temp > 38.5) { tier = 'AMBER'; rule = 'High Fever (Temp > 38.5°C)'; }
+        else if (sys > 140) { tier = 'AMBER'; rule = 'Elevated Systolic BP (Sys BP > 140)'; }
+        else if (dia > 90) { tier = 'AMBER'; rule = 'Elevated Diastolic BP (Dia BP > 90)'; }
+
+        // Only show if at least one input is filled
+        if (!isNaN(temp) || !isNaN(sys) || !isNaN(dia) || !isNaN(spo2)) {
+            displayResult(tier, rule);
+        } else {
+            document.getElementById('triageResult').classList.add('hidden');
+        }
+    }
+
+    function displayResult(tier, rule) {
+        const box = document.getElementById('triageResult');
+        const tierText = document.getElementById('resultTier');
+        const ruleText = document.getElementById('resultRule');
+        const icon = document.getElementById('resultIcon');
+
+        box.classList.remove('hidden', 'bg-red-50', 'border-crimson', 'bg-amber/10', 'border-amber', 'bg-emerald/10', 'border-emerald');
+        
+        if (tier === 'RED') {
+            box.classList.add('bg-red-50', 'border-crimson');
+            tierText.innerText = 'RED TIER';
+            tierText.className = 'text-2xl font-black text-crimson';
+            icon.innerHTML = '<svg class="w-10 h-10 text-crimson" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>';
+        } else if (tier === 'AMBER') {
+            box.classList.add('bg-amber/10', 'border-amber');
+            tierText.innerText = 'AMBER TIER';
+            tierText.className = 'text-2xl font-black text-amber';
+            icon.innerHTML = '<svg class="w-10 h-10 text-amber" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>';
+        } else {
+            box.classList.add('bg-emerald/10', 'border-emerald');
+            tierText.innerText = 'GREEN TIER';
+            tierText.className = 'text-2xl font-black text-emerald';
+            icon.innerHTML = '<svg class="w-10 h-10 text-emerald" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+        }
+        ruleText.innerText = rule;
+    }
+</script>
+{% endblock %}
