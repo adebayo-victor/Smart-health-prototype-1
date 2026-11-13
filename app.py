@@ -372,26 +372,23 @@ def tts_instruction():
             "traceback": error_trace
         }), 500
 
+
 # --- KNOWLEDGE BASE LOOKUP HELPER ---
 def query_knowledge_base(symptoms, vitals_str):
-    """
-    Uses the existing LiteLLM client (Code for Africa) to query medical guidelines.
-    """
     try:
         kb_model = os.getenv("KB_MODEL_NAME", os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"))
-        
         response = litellm_client.chat.completions.create(
             model=kb_model,
             messages=[
-                {"role": "system", "content": "You are a strict Medical Knowledge Base containing the Nigerian Standard Treatment Guidelines. Given symptoms and vitals, return ONLY the relevant clinical facts, standard protocols, and first-line treatment guidelines. Do NOT provide a final diagnosis."},
+                {"role": "system", "content": "You are a strict Medical Knowledge Base. Given symptoms and vitals, return ONLY relevant clinical facts and protocols. Do NOT diagnose."},
                 {"role": "user", "content": f"Symptoms: {symptoms}\nVitals: {vitals_str}"}
             ],
             temperature=0.1
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        logger.error(f"❌ Knowledge Base Query Error: {e}")
-        return "Could not retrieve knowledge base context."
+        logger.error(f"❌ KB Error: {e}")
+        return "Standard Nigerian Treatment Guidelines apply."
 
 @app.route('/api/diagnosis', methods=['POST'])
 def diagnosis_assessment():
@@ -404,7 +401,6 @@ def diagnosis_assessment():
         if not patient_name and not encounter_id:
             return jsonify({"error": "Patient name is required"}), 400
 
-        # Link to existing or create new
         if encounter_id:
             encounter = Encounter.query.get(encounter_id)
             if not encounter: return jsonify({"error": "Record not found"}), 404
@@ -419,38 +415,28 @@ def diagnosis_assessment():
         dia_bp = data.get('dia_bp')
         spo2 = data.get('spo2')
 
-        # Format vitals for the prompt
         vitals_dict = {k: v for k, v in {'Temp': temp, 'HR': hr, 'SysBP': sys_bp, 'DiaBP': dia_bp, 'SpO2': spo2}.items() if v is not None}
         vitals_str = ", ".join([f"{k}: {v}" for k, v in vitals_dict.items()]) if vitals_dict else "Not provided"
 
-        # 1. QUERY THE KNOWLEDGE BASE
+        # 1. QUERY KNOWLEDGE BASE
         kb_context = query_knowledge_base(symptoms, vitals_str)
 
-        # 2. THE SYSTEMIC FOOTPRINT ALGORITHM PROMPT
+        # 2. SYSTEMIC FOOTPRINT PROMPT
         prompt = f"""
-        You are an expert medical AI using the "Systemic Footprint Algorithm" for diagnosis in a Nigerian clinical setting.
+        You are an expert medical AI using the "Systemic Footprint Algorithm" in a Nigerian clinical setting.
         
-        KNOWLEDGE BASE CONTEXT (Nigerian Standard Treatment Guidelines):
+        KNOWLEDGE BASE CONTEXT:
         {kb_context}
 
-        PATIENT SYMPTOMS:
-        "{symptoms}"
+        PATIENT SYMPTOMS: "{symptoms}"
+        PATIENT VITALS: {vitals_str}
 
-        PATIENT VITALS:
-        {vitals_str}
-
-        Follow this exact logical process:
-        1. SYSTEM MAPPING: Identify which bodily systems are affected by the symptoms and vitals.
-        2. FOOTPRINT MATCHING: Which diseases naturally leave this specific combination of systemic effects?
-        3. REGIONAL WEIGHTING: Adjust likelihood based on Nigeria (prioritize Malaria, Typhoid, Lassa, Sickle Cell).
-        4. CROSS-REFERENCE: Ensure your diagnosis strictly aligns with the provided Knowledge Base Context.
-
-        Return ONLY valid JSON in this exact format:
+        Return ONLY valid JSON (no markdown, no code blocks) in this exact format:
         {{
           "primary_diagnosis": "Most likely disease",
           "differentials": ["Alternative 1", "Alternative 2"],
-          "footprint_reasoning": "Brief explanation of how symptoms and vitals map to systems and why regional factors support this.",
-          "medications": "Suggested first-line treatments or actions based on guidelines"
+          "footprint_reasoning": "Brief explanation of how symptoms and vitals map to systems.",
+          "medications": "Suggested first-line treatments"
         }}
         """
         
@@ -459,15 +445,27 @@ def diagnosis_assessment():
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2
         )
-        ai_data = json.loads(llm_response.choices[0].message.content.strip())
+        
+        # --- THE FIX: CLEAN THE AI RESPONSE ---
+        raw_content = llm_response.choices[0].message.content.strip()
+        
+        # Remove markdown code blocks if the AI added them (e.g., ```json ... ```)
+        if raw_content.startswith("```json"):
+            raw_content = raw_content[7:]
+        if raw_content.startswith("```"):
+            raw_content = raw_content[3:]
+        if raw_content.endswith("```"):
+            raw_content = raw_content[:-3]
+        raw_content = raw_content.strip()
+
+        # Now parse the clean JSON
+        ai_data = json.loads(raw_content)
 
         # Save to DB
         encounter.diagnosis_notes = f"Primary: {ai_data.get('primary_diagnosis')}. Reasoning: {ai_data.get('footprint_reasoning')}"
         encounter.diagnosis_medications = ai_data.get('medications')
         
-        # Update vitals in DB if provided
         if vitals_dict:
-            # Merge with existing vitals if any
             existing_vitals = json.loads(encounter.vitals_json) if encounter.vitals_json else {}
             existing_vitals.update(vitals_dict)
             encounter.vitals_json = json.dumps(existing_vitals)
@@ -479,6 +477,10 @@ def diagnosis_assessment():
             "encounter_id": encounter.id,
             "message": "Diagnosis saved successfully."
         })
+        
+    except json.JSONDecodeError:
+        # Specific error if the AI still returns bad JSON
+        return jsonify({"error": "AI returned invalid data format. Please try again."}), 500
     except Exception as e:
         logger.error(f"❌ Diagnosis Error: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
