@@ -256,5 +256,55 @@ async function finalizeSave(diagnosisText) {
     try { data = JSON.parse(raw); } catch (e) { throw new Error("Server error."); }
     if (!response.ok) throw new Error(data.error || 'Server error');
 }
+
+function renderOptions(options, reasoning, source) {
+    document.getElementById('selectionArea').classList.remove('hidden');
+
+    let reasoningHtml = reasoning;
+    if (source && source !== "Unknown") {
+        reasoningHtml += `<br><br><span class="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-1 rounded inline-block mt-2">📚 Source: ${source}</span>`;
+    }
+    document.getElementById('aiReasoning').innerHTML = reasoningHtml;
+
+    const container = document.getElementById('optionsContainer');
+    container.innerHTML = '';
+    selectedDiagnosis = null;
+
+    // Reset button + hint to "disabled" look
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = true;
+    btn.className = "w-full min-h-14 rounded-xl font-bold flex items-center justify-center gap-2 transition bg-slate-200 text-slate-400 cursor-not-allowed";
+    document.getElementById('saveHint').innerText = "👆 Select a diagnosis to enable saving";
+    document.getElementById('saveHint').className = "text-center text-xs font-bold text-slate-400 mt-2";
+
+    options.forEach((opt) => {
+        const safeOpt = opt.replace(/'/g, "\\'");
+        container.innerHTML += `
+            <label class="flex items-center gap-3 p-4 bg-white rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition option-card" onclick="selectOption(this, '${safeOpt}')">
+                <input type="radio" name="diagnosis_choice" class="w-5 h-5 text-emerald-600 focus:ring-emerald-500">
+                <span class="text-sm font-bold text-slate-800">${opt}</span>
+            </label>
+        `;
+    });
+}
+
+function selectOption(element, diagnosis) {
+    document.querySelectorAll('.option-card').forEach(card => {
+        card.classList.remove('border-emerald-500', 'bg-emerald-50');
+        card.classList.add('border-slate-200', 'bg-white');
+    });
+    element.classList.remove('border-slate-200', 'bg-white');
+    element.classList.add('border-emerald-500', 'bg-emerald-50');
+
+    selectedDiagnosis = diagnosis;
+
+    // Flip button + hint to "ready" look
+    const btn = document.getElementById('saveBtn');
+    btn.disabled = false;
+    btn.className = "w-full min-h-14 rounded-xl font-bold flex items-center justify-center gap-2 transition bg-emerald-600 text-white hover:bg-emerald-700";
+    document.getElementById('saveHint').innerText = "✓ Ready to save: " + diagnosis;
+    document.getElementById('saveHint').className = "text-center text-xs font-bold text-emerald-600 mt-2";
+}
+    
 </script>
 {% endblock %}
