@@ -403,21 +403,36 @@ def patient_voice():
         if not phone_number or not audio_file:
             return jsonify({"error": "Missing phone number or audio."}), 400
 
+        # 🛡️ SAFETY CHECK: Read the file and check its size
+        audio_data = audio_file.read()
+        file_size = len(audio_data)
+        
+        # If the file is less than 2KB, it's basically empty (user tapped too fast or mic failed)
+        if file_size < 2000:
+            logger.warning(f"⚠️ Audio file too small: {file_size} bytes")
+            return jsonify({"error": "Audio too short. Please hold the mic and speak for at least 2 seconds."}), 400
+
         patient = Patient.query.filter_by(phone_number=phone_number).first()
         if not patient:
             patient = Patient(phone_number=phone_number, preferred_language=language)
             db.session.add(patient)
             db.session.flush()
 
-        transcription = groq_client.audio.transcriptions.create(
-            file=(audio_file.filename, audio_file.read(), "audio/webm"),
-            model="whisper-large-v3",
-            prompt=f"This is a medical question in {language}.",
-            response_format="text"
-        )
+        # 3. Speech to Text (Groq Whisper) with error handling
+        try:
+            transcription = groq_client.audio.transcriptions.create(
+                file=(audio_file.filename or "recording.webm", audio_data, "audio/webm"),
+                model="whisper-large-v3",
+                prompt=f"This is a medical question in {language}.",
+                response_format="text"
+            )
+        except Exception as groq_err:
+            logger.error(f"❌ Groq Transcription Failed: {groq_err}")
+            return jsonify({"error": "Could not understand the audio. Please speak clearly and try again."}), 400
+
         user_text = transcription.text.strip()
         if not user_text:
-            return jsonify({"error": "Could not understand audio."}), 400
+            return jsonify({"error": "No speech detected. Please try again."}), 400
 
         translated_text = user_text
         if language != 'en':
@@ -493,9 +508,6 @@ def patient_voice():
     except Exception as e:
         logger.error(f"❌ Patient Voice Error: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
-
-# NOTE: If you had /api/triage, /api/diagnosis, /api/translate, /api/tts_instruction routes, 
-# paste them back right here before the if __name__ == '__main__' block!
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
