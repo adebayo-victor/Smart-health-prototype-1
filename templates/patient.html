@@ -59,12 +59,19 @@
             <p id="statusText" class="text-center text-xs font-bold text-slate-400 mb-3 h-4">Tap and hold to speak</p>
             <div class="flex justify-center pb-2">
                 <button id="micButton" 
-                    onmousedown="startRecording()" onmouseup="stopRecording()" 
-                    ontouchstart="startRecording()" ontouchend="stopRecording()"
-                    class="w-20 h-20 rounded-full bg-slateDark text-white flex items-center justify-center shadow-xl transition-all duration-200 active:scale-95 hover:bg-slate-800 relative">
+                    oncontextmenu="return false;"
+                    onpointerdown="startRecording(event)" 
+                    onpointerup="stopRecording(event)"
+                    onpointercancel="stopRecording(event)"
+                    class="w-20 h-20 rounded-full bg-slateDark text-white flex items-center justify-center shadow-xl transition-all duration-200 active:scale-95 hover:bg-slate-800 relative touch-none select-none"
+                    style="-webkit-user-select: none; -webkit-touch-callout: none; user-select: none; touch-action: none;">
+                    
+                    <!-- Mic Icon -->
                     <svg id="micIcon" xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
                     </svg>
+                
+                    <!-- Recording Pulse Ring -->
                     <div id="recordingPulse" class="absolute inset-0 rounded-full border-4 border-crimson opacity-0 scale-100"></div>
                 </button>
             </div>
@@ -97,8 +104,10 @@ function startChat() {
     document.getElementById('chatScreen').classList.add('flex');
 }
 
-async function startRecording() {
+async function startRecording(event) {
+    if (event) event.preventDefault(); // Stops the Chrome context menu from appearing
     if (!patientId) return;
+    
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorder = new MediaRecorder(stream);
@@ -111,7 +120,7 @@ async function startRecording() {
         mediaRecorder.onstop = async () => {
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
             
-            // Prevent sending tiny blobs
+            // Prevent sending tiny blobs (user tapped too fast)
             if (audioBlob.size < 2000) {
                 alert("Recording too short. Please hold the mic and speak for at least 2 seconds.");
                 updateUIState('idle');
@@ -128,6 +137,14 @@ async function startRecording() {
     } catch (err) {
         console.error("Mic access denied:", err);
         alert("Please allow microphone access to speak.");
+    }
+}
+
+function stopRecording(event) {
+    if (event) event.preventDefault(); // Stops default touch actions
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        updateUIState('thinking');
     }
 }
 
