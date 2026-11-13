@@ -3,12 +3,35 @@
 {% block content %}
 <div class="pb-20">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
+    <div class="flex items-center justify-between mb-4">
         <h1 class="text-xl font-black text-slate-800">Patient Ledger</h1>
         <a href="/translator" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 transition shadow-sm">
             + New Intake
         </a>
     </div>
+
+    <!-- Search Bar -->
+    <form action="/dashboard" method="GET" class="mb-4">
+        <!-- Hidden inputs to preserve current filters while searching -->
+        <input type="hidden" name="tier" value="{{ current_tier }}">
+        <input type="hidden" name="stage" value="{{ current_stage }}">
+        
+        <div class="relative">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400 absolute left-3 top-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input type="text" name="search" value="{{ current_search }}" placeholder="Search patient name..."
+                   class="w-full min-h-12 pl-10 pr-10 rounded-xl border border-slate-200 bg-white text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            
+            {% if current_search %}
+            <a href="?tier={{ current_tier }}&stage={{ current_stage }}" class="absolute right-3 top-3 text-slate-400 hover:text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </a>
+            {% endif %}
+        </div>
+    </form>
 
     <!-- Filter Section -->
     <div class="bg-white p-4 rounded-xl border border-slate-200 mb-6 space-y-3">
@@ -16,10 +39,10 @@
         <div>
             <p class="text-[10px] font-black uppercase text-slate-400 mb-2">Filter by Risk</p>
             <div class="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                <a href="?tier=all&stage={{ current_stage }}" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_tier == 'all' %}bg-slate-800 text-white{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">All</a>
-                <a href="?tier=RED&stage={{ current_stage }}" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_tier == 'RED' %}bg-red-600 text-white{% else %}bg-red-50 text-red-700 hover:bg-red-100{% endif %}">🔴 RED</a>
-                <a href="?tier=YELLOW&stage={{ current_stage }}" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_tier == 'YELLOW' %}bg-amber-500 text-white{% else %}bg-amber-50 text-amber-700 hover:bg-amber-100{% endif %}">🟡 YELLOW</a>
-                <a href="?tier=GREEN&stage={{ current_stage }}" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_tier == 'GREEN' %}bg-emerald-600 text-white{% else %}bg-emerald-50 text-emerald-700 hover:bg-emerald-100{% endif %}">🟢 GREEN</a>
+                <a href="?tier=all&stage={{ current_stage }}&search={{ current_search }}" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_tier == 'all' %}bg-slate-800 text-white{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">All</a>
+                <a href="?tier=RED&stage={{ current_stage }}&search={{ current_search }}" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_tier == 'RED' %}bg-red-600 text-white{% else %}bg-red-50 text-red-700 hover:bg-red-100{% endif %}">🔴 RED</a>
+                <a href="?tier=YELLOW&stage={{ current_stage }}&search={{ current_search }}" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_tier == 'YELLOW' %}bg-amber-500 text-white{% else %}bg-amber-50 text-amber-700 hover:bg-amber-100{% endif %}">🟡 YELLOW</a>
+                <a href="?tier=GREEN&stage={{ current_stage }}&search={{ current_search }}" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_tier == 'GREEN' %}bg-emerald-600 text-white{% else %}bg-emerald-50 text-emerald-700 hover:bg-emerald-100{% endif %}">🟢 GREEN</a>
             </div>
         </div>
 
@@ -27,10 +50,10 @@
         <div class="border-t border-slate-100 pt-3">
             <p class="text-[10px] font-black uppercase text-slate-400 mb-2">Filter by Stage</p>
             <div class="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                <a href="?tier={{ current_tier }}&stage=all" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_stage == 'all' %}bg-slate-800 text-white{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">All Stages</a>
-                <a href="?tier={{ current_tier }}&stage=triage" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_stage == 'triage' %}bg-slate-800 text-white{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">Triage</a>
-                <a href="?tier={{ current_tier }}&stage=diagnosis" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_stage == 'diagnosis' %}bg-slate-800 text-white{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">Diagnosis</a>
-                <a href="?tier={{ current_tier }}&stage=referred" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_stage == 'referred' %}bg-slate-800 text-white{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">Referred</a>
+                <a href="?tier={{ current_tier }}&stage=all&search={{ current_search }}" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_stage == 'all' %}bg-slate-800 text-white{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">All Stages</a>
+                <a href="?tier={{ current_tier }}&stage=triage&search={{ current_search }}" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_stage == 'triage' %}bg-slate-800 text-white{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">Triage</a>
+                <a href="?tier={{ current_tier }}&stage=diagnosis&search={{ current_search }}" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_stage == 'diagnosis' %}bg-slate-800 text-white{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">Diagnosis</a>
+                <a href="?tier={{ current_tier }}&stage=referred&search={{ current_search }}" class="px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition {% if current_stage == 'referred' %}bg-slate-800 text-white{% else %}bg-slate-100 text-slate-600 hover:bg-slate-200{% endif %}">Referred</a>
             </div>
         </div>
     </div>
@@ -96,14 +119,7 @@
 </div>
 
 <style>
-    /* Hide scrollbar for Chrome, Safari and Opera */
-    .no-scrollbar::-webkit-scrollbar {
-        display: none;
-    }
-    /* Hide scrollbar for IE, Edge and Firefox */
-    .no-scrollbar {
-        -ms-overflow-style: none;  /* IE and Edge */
-        scrollbar-width: none;  /* Firefox */
-    }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 </style>
 {% endblock %}
