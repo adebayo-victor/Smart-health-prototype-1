@@ -103,12 +103,26 @@ async function startRecording() {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorder = new MediaRecorder(stream);
         audioChunks = [];
-        mediaRecorder.ondataavailable = event => { if (event.data.size > 0) audioChunks.push(event.data); };
+        
+        mediaRecorder.ondataavailable = event => { 
+            if (event.data.size > 0) audioChunks.push(event.data); 
+        };
+        
         mediaRecorder.onstop = async () => {
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            
+            // Prevent sending tiny blobs
+            if (audioBlob.size < 2000) {
+                alert("Recording too short. Please hold the mic and speak for at least 2 seconds.");
+                updateUIState('idle');
+                stream.getTracks().forEach(track => track.stop());
+                return;
+            }
+
             await sendAudioToBackend(audioBlob);
             stream.getTracks().forEach(track => track.stop());
         };
+        
         mediaRecorder.start();
         updateUIState('recording');
     } catch (err) {
