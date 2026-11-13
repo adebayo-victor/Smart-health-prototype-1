@@ -390,23 +390,42 @@ def query_knowledge_base(symptoms, vitals_str):
         logger.error(f"❌ KB Error: {e}")
         return "Standard Nigerian Treatment Guidelines apply."
 
+
 @app.route('/api/diagnosis', methods=['POST'])
 def diagnosis_assessment():
     try:
         data = request.get_json()
         patient_name = data.get('patient_name')
-        symptoms = data.get('symptoms', '')
         encounter_id = data.get('encounter_id')
+        
+        # --- STEP 2: FINAL SAVE (If a diagnosis was selected) ---
+        if 'selected_diagnosis' in data:
+            if not encounter_id:
+                return jsonify({"error": "Missing encounter ID for saving."}), 400
+            
+            encounter = Encounter.query.get(encounter_id)
+            if not encounter: return jsonify({"error": "Record not found"}), 404
+            
+            selected = data['selected_diagnosis']
+            # Save the final chosen diagnosis
+            encounter.diagnosis_notes = f"Final Diagnosis: {selected}. (AI-assisted selection)"
+            encounter.current_stage = 'diagnosis'
+            db.session.commit()
+            
+            return jsonify({"message": "Diagnosis confirmed and saved.", "encounter_id": encounter.id})
 
+        # --- STEP 1: GENERATE OPTIONS (AI Analysis) ---
+        symptoms = data.get('symptoms', '')
         if not patient_name and not encounter_id:
             return jsonify({"error": "Patient name is required"}), 400
 
+        # Link to existing or create new draft record
         if encounter_id:
             encounter = Encounter.query.get(encounter_id)
-            if not encounter: return jsonify({"error": "Record not found"}), 404
         else:
             encounter = Encounter(patient_name=patient_name)
             db.session.add(encounter)
+            db.session.flush() # Get ID without committing fully yet
 
         # Parse Vitals
         temp = data.get('temp')
@@ -419,24 +438,32 @@ def diagnosis_assessment():
         vitals_str = ", ".join([f"{k}: {v}" for k, v in vitals_dict.items()]) if vitals_dict else "Not provided"
 
         # 1. QUERY KNOWLEDGE BASE
-        kb_context = query_knowledge_base(symptoms, vitals_str)
+        try:
+            kb_model = os.getenv("KB_MODEL_NAME", os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"))
+            kb_response = litellm_client.chat.completions.create(
+                model=kb_model,
+                messages=[
+                    {"role": "system", "content": "You are a strict Medical Knowledge Base. Return ONLY relevant clinical facts and protocols for these symptoms/vitals. Do NOT diagnose."},
+                    {"role": "user", "content": f"Symptoms: {symptoms}\nVitals: {vitals_str}"}
+                ],
+                temperature=0.1
+            )
+            kb_context = kb_response.choices[0].message.content.strip()
+        except Exception:
+            kb_context = "Standard Nigerian Treatment Guidelines apply."
 
         # 2. SYSTEMIC FOOTPRINT PROMPT
         prompt = f"""
-        You are an expert medical AI using the "Systemic Footprint Algorithm" in a Nigerian clinical setting.
+        You are an expert medical AI using the "Systemic Footprint Algorithm".
         
-        KNOWLEDGE BASE CONTEXT:
-        {kb_context}
-
+        KNOWLEDGE BASE CONTEXT: {kb_context}
         PATIENT SYMPTOMS: "{symptoms}"
         PATIENT VITALS: {vitals_str}
 
-        Return ONLY valid JSON (no markdown, no code blocks) in this exact format:
+        Return ONLY valid JSON (no markdown) in this exact format:
         {{
-          "primary_diagnosis": "Most likely disease",
-          "differentials": ["Alternative 1", "Alternative 2"],
-          "footprint_reasoning": "Brief explanation of how symptoms and vitals map to systems.",
-          "medications": "Suggested first-line treatments"
+          "options": ["Primary Diagnosis", "Differential 1", "Differential 2", "None of the above"],
+          "reasoning": "Brief 1-sentence explanation of the systemic footprint."
         }}
         """
         
@@ -446,41 +473,26 @@ def diagnosis_assessment():
             temperature=0.2
         )
         
-        # --- THE FIX: CLEAN THE AI RESPONSE ---
         raw_content = llm_response.choices[0].message.content.strip()
+        if raw_content.startswith("```json"): raw_content = raw_content[7:]
+        if raw_content.startswith("```"): raw_content = raw_content[3:]
+        if raw_content.endswith("```"): raw_content = raw_content[:-3]
         
-        # Remove markdown code blocks if the AI added them (e.g., ```json ... ```)
-        if raw_content.startswith("```json"):
-            raw_content = raw_content[7:]
-        if raw_content.startswith("```"):
-            raw_content = raw_content[3:]
-        if raw_content.endswith("```"):
-            raw_content = raw_content[:-3]
-        raw_content = raw_content.strip()
+        ai_data = json.loads(raw_content.strip())
 
-        # Now parse the clean JSON
-        ai_data = json.loads(raw_content)
-
-        # Save to DB
-        encounter.diagnosis_notes = f"Primary: {ai_data.get('primary_diagnosis')}. Reasoning: {ai_data.get('footprint_reasoning')}"
-        encounter.diagnosis_medications = ai_data.get('medications')
-        
+        # Save vitals to the draft record
         if vitals_dict:
-            existing_vitals = json.loads(encounter.vitals_json) if encounter.vitals_json else {}
-            existing_vitals.update(vitals_dict)
-            encounter.vitals_json = json.dumps(existing_vitals)
-            
-        encounter.current_stage = 'diagnosis'
+            encounter.vitals_json = json.dumps(vitals_dict)
         db.session.commit()
 
         return jsonify({
             "encounter_id": encounter.id,
-            "message": "Diagnosis saved successfully."
+            "options": ai_data.get('options', []),
+            "reasoning": ai_data.get('reasoning', '')
         })
-        
+
     except json.JSONDecodeError:
-        # Specific error if the AI still returns bad JSON
-        return jsonify({"error": "AI returned invalid data format. Please try again."}), 500
+        return jsonify({"error": "AI returned invalid data format."}), 500
     except Exception as e:
         logger.error(f"❌ Diagnosis Error: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
