@@ -120,21 +120,22 @@ def dashboard():
 # ==========================================
 
 # --- TRIAGE ROUTE (THE MISSING PIECE) ---
+# --- TRIAGE ROUTE (Strict Vitals Only) ---
 @app.route('/api/triage', methods=['POST'])
 def triage_assessment():
     try:
         data = request.get_json()
-        encounter = get_or_create_encounter(data)
+        patient_name = data.get('patient_name')
         
-        # Parse vitals (allow None if not provided)
+        if not patient_name:
+            return jsonify({"error": "Patient name is required"}), 400
+
+        # Parse the 5 core vitals
         temp = data.get('temp')
         sys_bp = data.get('sys_bp')
         dia_bp = data.get('dia_bp')
         spo2 = data.get('spo2')
         hr = data.get('hr')
-        age = data.get('age')
-        gender = data.get('gender', '').lower()
-        meds = data.get('meds', '')
 
         tier = 'GREEN'
         triggers = []
@@ -157,7 +158,7 @@ def triage_assessment():
                 tier = 'RED'
                 bp_str = f"{sys_bp or '?'}/{dia_bp or '?'}"
                 triggers.append(f"Blood Pressure ({bp_str} mmHg)")
-                notes.append("Hypertensive crisis / Preeclampsia risk.")
+                notes.append("Hypertensive crisis.")
             elif ((sys_bp is not None and 120 <= sys_bp <= 139) or (dia_bp is not None and 80 <= dia_bp <= 89)) and tier != 'RED':
                 tier = 'YELLOW'
                 bp_str = f"{sys_bp or '?'}/{dia_bp or '?'}"
@@ -186,23 +187,11 @@ def triage_assessment():
                 triggers.append(f"Heart Rate ({hr} BPM)")
                 notes.append("Mild tachycardia or bradycardia.")
 
-        # 5. Age/Gender Multiplier (Pregnancy Risk)
-        if age is not None and 15 <= int(age) <= 49 and gender == 'female':
-            if tier == 'GREEN' and ((sys_bp is not None and sys_bp >= 130) or (dia_bp is not None and dia_bp >= 85)):
-                tier = 'YELLOW'
-                triggers.append("BP in pregnant woman")
-                notes.append("Elevated BP in reproductive-age female requires caution.")
-
         # Format Output
         trigger_text = ", ".join(triggers) if triggers else "All recorded vitals within stable ranges"
         note_text = " ".join(notes) if notes else "Patient is stable."
         
-        is_limited = (temp is None and sys_bp is None and dia_bp is None and spo2 is None and hr is None)
-        limited_note = " (Assessment based on limited vitals)" if not is_limited and len(triggers) < 2 else ""
-
-        final_notes = f"{note_text}{limited_note}"
-
-        # TC Steps for Triage
+        # TC Steps based on tier
         if tier == 'RED':
             tc_steps = ["Re-check all vitals immediately to confirm.", "Prepare for immediate referral."]
         elif tier == 'YELLOW':
@@ -210,16 +199,18 @@ def triage_assessment():
         else:
             tc_steps = ["Routine follow-up as needed."]
 
-        # Save to DB
+        # Save to Database
+        encounter = Encounter(patient_name=patient_name)
         encounter.triage_tier = tier
-        encounter.triage_notes = final_notes
+        encounter.triage_notes = note_text
         encounter.tc_steps_triage = json.dumps(tc_steps)
         
-        # Save raw vitals for context
-        vitals_dict = {k: v for k, v in {'temp': temp, 'sys_bp': sys_bp, 'dia_bp': dia_bp, 'spo2': spo2, 'hr': hr, 'age': age, 'gender': gender, 'meds': meds}.items() if v is not None}
+        # Save raw vitals as JSON string
+        vitals_dict = {k: v for k, v in {'temp': temp, 'sys_bp': sys_bp, 'dia_bp': dia_bp, 'spo2': spo2, 'hr': hr}.items() if v is not None}
         encounter.vitals_json = json.dumps(vitals_dict)
         encounter.current_stage = 'triage'
         
+        db.session.add(encounter)
         db.session.commit()
 
         return jsonify({
@@ -227,13 +218,13 @@ def triage_assessment():
             "triage_data": {
                 "tier": tier,
                 "trigger": trigger_text,
-                "notes": final_notes,
+                "notes": note_text,
                 "tc_steps": tc_steps
             }
         })
     except Exception as e:
         logger.error(f"❌ Triage Error: {traceback.format_exc()}")
-        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify({"error": str(e)}), 500
 
 
 # --- TRANSLATION ROUTE (Updated to require patient_name and use new model) ---
