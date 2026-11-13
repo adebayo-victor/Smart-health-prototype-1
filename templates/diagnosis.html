@@ -3,14 +3,15 @@
 {% block content %}
 <div class="pb-20">
     <div class="flex items-center gap-3 mb-6">
-        <a href="/" class="w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-full transition">
+        <!-- Back Button: Now intercepts if analysis is pending -->
+        <button onclick="handleBack()" class="w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-full transition">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-        </a>
+        </button>
         <h1 class="text-xl font-black text-slate-800">Systemic Footprint Diagnosis</h1>
     </div>
 
     <!-- Input Form -->
-    <div id="inputForm" class="bg-white p-4 rounded-xl border border-slate-200 mb-6 space-y-4">
+    <div class="bg-white p-4 rounded-xl border border-slate-200 mb-6 space-y-4">
         <div>
             <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Patient Name *</label>
             <input type="text" id="patient_name" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-slate-50 text-base font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500" placeholder="e.g., Amina Yusuf">
@@ -45,7 +46,7 @@
         </div>
     </div>
 
-    <!-- Step 1 Button -->
+    <!-- Step 1: Analyze Button -->
     <button id="analyzeBtn" onclick="analyzeSymptoms()" class="w-full min-h-14 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-700 transition mb-6">
         Analyze Symptoms
     </button>
@@ -56,7 +57,7 @@
         <span class="font-bold">Running Systemic Footprint Analysis...</span>
     </div>
 
-    <!-- Step 2: Selection UI (Hidden initially) -->
+    <!-- Step 2: Selection & Save UI -->
     <div id="selectionArea" class="hidden space-y-4">
         <div class="bg-blue-50 p-4 rounded-xl border border-blue-200">
             <p class="text-[10px] font-black uppercase text-blue-700 mb-1">AI Clinical Reasoning</p>
@@ -68,21 +69,35 @@
             <div id="optionsContainer" class="space-y-2"></div>
         </div>
 
-        <!-- Step 2 Button -->
-        <button id="confirmBtn" onclick="confirmDiagnosis()" disabled class="w-full min-h-14 bg-emerald-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
-            Confirm & Save Diagnosis
+        <!-- Final Save Button -->
+        <button id="saveBtn" onclick="saveDiagnosis()" disabled class="w-full min-h-14 bg-emerald-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+            Save Diagnosis
         </button>
     </div>
 
     <!-- Success Message -->
     <div id="successMessage" class="hidden p-4 bg-emerald-50 border-2 border-emerald-500 rounded-xl text-center mt-4">
-        <p class="text-emerald-800 font-bold">✅ Diagnosis successfully saved to patient record.</p>
+        <p class="text-emerald-800 font-bold">✅ Diagnosis successfully saved.</p>
+        <a href="/" class="inline-block mt-2 text-sm font-bold text-emerald-700 underline">Return to Home</a>
+    </div>
+</div>
+
+<!-- Unsaved Changes Modal -->
+<div id="unsavedModal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+        <h3 class="text-lg font-black text-slate-800 mb-2">No Diagnosis Selected</h3>
+        <p class="text-sm text-slate-600 mb-6">You haven't selected a diagnosis yet. Do you want to save this case as <b>"Undiagnosed"</b> and exit?</p>
+        <div class="flex gap-3">
+            <button onclick="closeModal()" class="flex-1 min-h-12 bg-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-300 transition">Cancel</button>
+            <button onclick="saveAsUndiagnosed()" class="flex-1 min-h-12 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 transition">Save & Exit</button>
+        </div>
     </div>
 </div>
 
 <script>
 let currentEncounterId = null;
 let selectedDiagnosis = null;
+let analysisComplete = false;
 
 async function analyzeSymptoms() {
     const patientName = document.getElementById('patient_name').value.trim();
@@ -121,6 +136,7 @@ async function analyzeSymptoms() {
         if (!response.ok) throw new Error(data.error || 'Server error');
 
         currentEncounterId = data.encounter_id;
+        analysisComplete = true;
         renderOptions(data.options, data.reasoning);
     } catch (error) {
         alert('Error: ' + error.message);
@@ -137,11 +153,12 @@ function renderOptions(options, reasoning) {
     const container = document.getElementById('optionsContainer');
     container.innerHTML = '';
     selectedDiagnosis = null;
-    document.getElementById('confirmBtn').disabled = true;
+    document.getElementById('saveBtn').disabled = true;
 
-    options.forEach((opt, index) => {
+    options.forEach((opt) => {
+        const safeOpt = opt.replace(/'/g, "\\'");
         container.innerHTML += `
-            <label class="flex items-center gap-3 p-4 bg-white rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition option-card" onclick="selectOption(this, '${opt.replace(/'/g, "\\'")}')">
+            <label class="flex items-center gap-3 p-4 bg-white rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition option-card" onclick="selectOption(this, '${safeOpt}')">
                 <input type="radio" name="diagnosis_choice" class="w-5 h-5 text-emerald-600 focus:ring-emerald-500">
                 <span class="text-sm font-bold text-slate-800">${opt}</span>
             </label>
@@ -150,53 +167,89 @@ function renderOptions(options, reasoning) {
 }
 
 function selectOption(element, diagnosis) {
-    // Remove active style from all cards
     document.querySelectorAll('.option-card').forEach(card => {
         card.classList.remove('border-emerald-500', 'bg-emerald-50');
         card.classList.add('border-slate-200', 'bg-white');
     });
-    // Add active style to selected card
     element.classList.remove('border-slate-200', 'bg-white');
     element.classList.add('border-emerald-500', 'bg-emerald-50');
     
     selectedDiagnosis = diagnosis;
-    document.getElementById('confirmBtn').disabled = false;
+    document.getElementById('saveBtn').disabled = false;
 }
 
-async function confirmDiagnosis() {
+async function saveDiagnosis() {
     if (!selectedDiagnosis || !currentEncounterId) return;
 
-    document.getElementById('confirmBtn').innerText = 'Saving...';
-    document.getElementById('confirmBtn').disabled = true;
+    document.getElementById('saveBtn').innerText = 'Saving...';
+    document.getElementById('saveBtn').disabled = true;
 
     try {
-        const response = await fetch('/api/diagnosis', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                encounter_id: currentEncounterId,
-                selected_diagnosis: selectedDiagnosis
-            })
-        });
-
-        const raw = await response.text();
-        let data;
-        try { data = JSON.parse(raw); } catch (e) { throw new Error("Server error."); }
-        if (!response.ok) throw new Error(data.error || 'Server error');
-
+        await finalizeSave(selectedDiagnosis);
         document.getElementById('selectionArea').classList.add('hidden');
+        document.getElementById('analyzeBtn').classList.add('hidden');
         document.getElementById('successMessage').classList.remove('hidden');
-        
-        // Reset form for next patient
-        document.getElementById('patient_name').value = '';
-        document.getElementById('symptoms').value = '';
-        document.getElementById('analyzeBtn').classList.remove('hidden');
-        document.getElementById('confirmBtn').innerText = 'Confirm & Save Diagnosis';
-
     } catch (error) {
         alert('Error saving: ' + error.message);
-        document.getElementById('confirmBtn').disabled = false;
+        document.getElementById('saveBtn').innerText = 'Save Diagnosis';
+        document.getElementById('saveBtn').disabled = false;
     }
+}
+
+// --- NEW: Back Button Logic ---
+function handleBack() {
+    // If analysis hasn't run yet, just leave
+    if (!analysisComplete) {
+        window.location.href = '/';
+        return;
+    }
+    
+    // If analysis ran but nothing selected, show modal
+    if (!selectedDiagnosis) {
+        document.getElementById('unsavedModal').classList.remove('hidden');
+    } else {
+        // If they selected something but didn't click save, just leave (or you could prompt here too)
+        window.location.href = '/';
+    }
+}
+
+function closeModal() {
+    document.getElementById('unsavedModal').classList.add('hidden');
+}
+
+async function saveAsUndiagnosed() {
+    if (!currentEncounterId) return;
+    
+    // Close modal and show loading on button
+    closeModal();
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.innerText = 'Saving as Undiagnosed...';
+    saveBtn.disabled = true;
+
+    try {
+        await finalizeSave("Undiagnosed");
+        window.location.href = '/';
+    } catch (error) {
+        alert('Error saving: ' + error.message);
+        saveBtn.innerText = 'Save Diagnosis';
+        saveBtn.disabled = false;
+    }
+}
+
+async function finalizeSave(diagnosisText) {
+    const response = await fetch('/api/diagnosis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            encounter_id: currentEncounterId,
+            selected_diagnosis: diagnosisText
+        })
+    });
+
+    const raw = await response.text();
+    let data;
+    try { data = JSON.parse(raw); } catch (e) { throw new Error("Server error."); }
+    if (!response.ok) throw new Error(data.error || 'Server error');
 }
 </script>
 {% endblock %}
