@@ -372,6 +372,96 @@ def tts_instruction():
             "traceback": error_trace
         }), 500
 
+# --- KNOWLEDGE BASE LOOKUP HELPER ---
+def query_knowledge_base(symptoms):
+    """
+    Uses the existing LiteLLM client (Code for Africa) to query medical guidelines.
+    """
+    try:
+        # If Code for Africa gave you a specific model name for the KB, put it in Vercel env vars as KB_MODEL_NAME
+        # Otherwise, it defaults to your standard LLM_MODEL
+        kb_model = os.getenv("KB_MODEL_NAME", os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"))
+        
+        response = litellm_client.chat.completions.create(
+            model=kb_model,
+            messages=[
+                {"role": "system", "content": "You are a strict Medical Knowledge Base containing the Nigerian Standard Treatment Guidelines. Given a set of symptoms, return ONLY the relevant clinical facts, standard protocols, and first-line treatment guidelines. Do NOT provide a final diagnosis. Just provide the raw medical context."},
+                {"role": "user", "content": f"Symptoms: {symptoms}"}
+            ],
+            temperature=0.1
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logger.error(f"❌ Knowledge Base Query Error: {e}")
+        return "Could not retrieve knowledge base context."
+
+@app.route('/api/diagnosis', methods=['POST'])
+def diagnosis_assessment():
+    try:
+        data = request.get_json()
+        patient_name = data.get('patient_name')
+        symptoms = data.get('symptoms', '')
+        encounter_id = data.get('encounter_id')
+
+        if not patient_name and not encounter_id:
+            return jsonify({"error": "Patient name is required"}), 400
+
+        # Link to existing or create new
+        if encounter_id:
+            encounter = Encounter.query.get(encounter_id)
+            if not encounter: return jsonify({"error": "Record not found"}), 404
+        else:
+            encounter = Encounter(patient_name=patient_name)
+            db.session.add(encounter)
+
+        # 1. QUERY THE KNOWLEDGE BASE (LiteLLM)
+        kb_context = query_knowledge_base(symptoms)
+
+        # 2. THE SYSTEMIC FOOTPRINT ALGORITHM PROMPT (Now grounded in KB Context)
+        prompt = f"""
+        You are an expert medical AI using the "Systemic Footprint Algorithm" for diagnosis in a Nigerian clinical setting.
+        
+        KNOWLEDGE BASE CONTEXT (Nigerian Standard Treatment Guidelines):
+        {kb_context}
+
+        PATIENT SYMPTOMS:
+        "{symptoms}"
+
+        Follow this exact logical process:
+        1. SYSTEM MAPPING: Identify which bodily systems are affected.
+        2. FOOTPRINT MATCHING: Which diseases naturally leave this specific combination of systemic effects?
+        3. REGIONAL WEIGHTING: Adjust likelihood based on Nigeria (prioritize Malaria, Typhoid, Lassa, Sickle Cell).
+        4. CROSS-REFERENCE: Ensure your diagnosis strictly aligns with the provided Knowledge Base Context.
+
+        Return ONLY valid JSON in this exact format:
+        {{
+          "primary_diagnosis": "Most likely disease",
+          "differentials": ["Alternative 1", "Alternative 2"],
+          "footprint_reasoning": "Brief explanation of how symptoms map to systems and why regional factors support this.",
+          "medications": "Suggested first-line treatments or actions based on guidelines"
+        }}
+        """
+        
+        llm_response = litellm_client.chat.completions.create(
+            model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"),
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2
+        )
+        ai_data = json.loads(llm_response.choices[0].message.content.strip())
+
+        # Save to DB
+        encounter.diagnosis_notes = f"Primary: {ai_data.get('primary_diagnosis')}. Reasoning: {ai_data.get('footprint_reasoning')}"
+        encounter.diagnosis_medications = ai_data.get('medications')
+        encounter.current_stage = 'diagnosis'
+        db.session.commit()
+
+        return jsonify({
+            "encounter_id": encounter.id,
+            "diagnosis_data": ai_data
+        })
+    except Exception as e:
+        logger.error(f"❌ Diagnosis Error: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
