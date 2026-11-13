@@ -373,24 +373,6 @@ def tts_instruction():
         }), 500
 
 
-# --- KNOWLEDGE BASE LOOKUP HELPER ---
-def query_knowledge_base(symptoms, vitals_str):
-    try:
-        kb_model = os.getenv("KB_MODEL_NAME", os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"))
-        response = litellm_client.chat.completions.create(
-            model=kb_model,
-            messages=[
-                {"role": "system", "content": "You are a strict Medical Knowledge Base. Given symptoms and vitals, return ONLY relevant clinical facts and protocols. Do NOT diagnose."},
-                {"role": "user", "content": f"Symptoms: {symptoms}\nVitals: {vitals_str}"}
-            ],
-            temperature=0.1
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        logger.error(f"❌ KB Error: {e}")
-        return "Standard Nigerian Treatment Guidelines apply."
-
-
 @app.route('/api/diagnosis', methods=['POST'])
 def diagnosis_assessment():
     try:
@@ -407,7 +389,6 @@ def diagnosis_assessment():
             if not encounter: return jsonify({"error": "Record not found"}), 404
             
             selected = data['selected_diagnosis']
-            # Save the final chosen diagnosis
             encounter.diagnosis_notes = f"Final Diagnosis: {selected}. (AI-assisted selection)"
             encounter.current_stage = 'diagnosis'
             db.session.commit()
@@ -452,7 +433,7 @@ def diagnosis_assessment():
         except Exception:
             kb_context = "Standard Nigerian Treatment Guidelines apply."
 
-        # 2. SYSTEMIC FOOTPRINT PROMPT
+        # 2. SYSTEMIC FOOTPRINT PROMPT (Updated to include source_reference)
         prompt = f"""
         You are an expert medical AI using the "Systemic Footprint Algorithm".
         
@@ -463,7 +444,8 @@ def diagnosis_assessment():
         Return ONLY valid JSON (no markdown) in this exact format:
         {{
           "options": ["Primary Diagnosis", "Differential 1", "Differential 2", "None of the above"],
-          "reasoning": "Brief 1-sentence explanation of the systemic footprint."
+          "reasoning": "Brief 1-sentence explanation of the systemic footprint.",
+          "source_reference": "The specific medical guideline, document, or protocol used from the knowledge base (e.g., 'Nigerian Standard Treatment Guidelines 2023 - Malaria Protocol')"
         }}
         """
         
@@ -473,6 +455,7 @@ def diagnosis_assessment():
             temperature=0.2
         )
         
+        # Clean AI response (strip markdown if present)
         raw_content = llm_response.choices[0].message.content.strip()
         if raw_content.startswith("```json"): raw_content = raw_content[7:]
         if raw_content.startswith("```"): raw_content = raw_content[3:]
@@ -488,7 +471,8 @@ def diagnosis_assessment():
         return jsonify({
             "encounter_id": encounter.id,
             "options": ai_data.get('options', []),
-            "reasoning": ai_data.get('reasoning', '')
+            "reasoning": ai_data.get('reasoning', ''),
+            "source_reference": ai_data.get('source_reference', 'Unknown')
         })
 
     except json.JSONDecodeError:
