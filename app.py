@@ -454,6 +454,14 @@ def dashboard():
                            facility_centers=facility_centers)
 
 # ==========================================
+# 3. FRONTEND ROUTES(PATIENT SIDE)
+# ==========================================
+@app.route('/patient')
+def patient_portal():
+    return render_template('patient.html')
+
+
+# ==========================================
 # 4. BACKEND API ROUTES
 # ==========================================
 
