@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="pb-20">
+    <div class="flex items-center justify-between mb-6">
+        <h1 class="text-xl font-black text-slateDark">Recent Encounters</h1>
+        <a href="/translator" class="px-4 py-2 bg-emerald text-white rounded-lg text-sm font-bold hover:bg-emerald/90 transition">+ New Intake</a>
+    </div>
+
+    {% if encounters %}
+        <div class="space-y-3">
+            {% for enc in encounters %}
+            <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-sm font-bold text-slateDark">Patient #{{ enc.id }}</span>
+                        <span class="text-[10px] font-black px-2 py-0.5 rounded text-white 
+                            {% if enc.tier == 'RED' %}bg-crimson
+                            {% elif enc.tier == 'AMBER' %}bg-amber
+                            {% else %}bg-emerald{% endif %}">
+                            {{ enc.tier }} TIER
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-600 truncate">{{ enc.translation }}</p>
+                    <p class="text-[10px] text-slate-400 mt-1">{{ enc.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="text-center py-10">
+            <p class="text-slate-500 text-sm">No encounters recorded yet.</p>
+            <a href="/translator" class="inline-block mt-4 text-emerald font-bold text-sm hover:underline">Start your first intake →</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
