@@ -44,7 +44,18 @@
         Process Triage
     </button>
 
-
+    <!-- Result Box (This is the box the JS was looking for) -->
+    <div id="triageResult" class="hidden p-5 rounded-2xl border-2 transition-all mb-6">
+        <div class="flex items-center gap-4 mb-3">
+            <div id="resultIcon"></div>
+            <div>
+                <p id="resultTier" class="text-2xl font-black text-slate-800"></p>
+                <p id="resultTrigger" class="text-sm font-bold text-slate-600 mt-1"></p>
+            </div>
+        </div>
+        <p id="resultNotes" class="text-sm text-slate-700 bg-white/50 p-3 rounded-lg border border-slate-200/50"></p>
+    </div>
+</div>
 
 <script>
 async function processTriage() {
@@ -83,14 +94,17 @@ async function processTriage() {
 }
 
 function displayResult(data) {
+    // 1. Find the Result Box
     const box = document.getElementById('triageResult');
     const tierText = document.getElementById('resultTier');
     const triggerText = document.getElementById('resultTrigger');
     const notesText = document.getElementById('resultNotes');
     const icon = document.getElementById('resultIcon');
 
+    // 2. Reset classes
     box.classList.remove('hidden', 'bg-red-50', 'border-red-500', 'bg-amber-50', 'border-amber-500', 'bg-emerald-50', 'border-emerald-500');
 
+    // 3. Apply new styles based on Tier
     if (data.tier === 'RED') {
         box.classList.add('bg-red-50', 'border-red-500');
         tierText.innerText = '🔴 RED SEVERITY';
@@ -108,9 +122,9 @@ function displayResult(data) {
         icon.innerHTML = '<svg class="w-10 h-10 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
     }
 
+    // 4. Update Text
     triggerText.innerText = `Triggered by: ${data.trigger}`;
     notesText.innerText = data.notes;
-
 }
 </script>
 {% endblock %}
