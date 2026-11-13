@@ -1,9 +1,11 @@
 import os
-from flask import Flask, render_template, request, jsonify
+import asyncio
+from flask import Flask, render_template, request, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from dotenv import load_dotenv
 from groq import Groq
+import edge_tts
 
 # Load environment variables
 load_dotenv()
@@ -13,7 +15,7 @@ app = Flask(__name__)
 # ==========================================
 # DATABASE CONFIGURATION
 # ==========================================
-# Create a local SQLite database file named 'smarthealth.db'
+# Use /tmp/ for Vercel serverless compatibility
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/smarthealth.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
@@ -64,10 +66,8 @@ def diagnosis():
 def referral():
     return render_template('referral.html')
 
-# NEW: Dashboard Route to show saved encounters
 @app.route('/dashboard')
 def dashboard():
-    # Fetch all encounters from the database, newest first
     encounters = Encounter.query.order_by(Encounter.created_at.desc()).all()
     return render_template('dashboard.html', encounters=encounters)
 
@@ -75,6 +75,58 @@ def dashboard():
 # BACKEND API ROUTES
 # ==========================================
 
+# NEW: Translate Text and Generate Audio (Edge-TTS)
+@app.route('/api/tts_instruction', methods=['POST'])
+def tts_instruction():
+    try:
+        data = request.get_json()
+        text = data.get('text')
+        lang = data.get('language', 'en')
+
+        if not text:
+            return jsonify({"error": "No text provided"}), 400
+
+        # 1. Translate text using Groq (if not English)
+        lang_map = {'ha': 'Hausa', 'pcm': 'Nigerian Pidgin', 'en': 'English'}
+        target_lang_name = lang_map.get(lang, 'English')
+        
+        translated_text = text
+        if lang != 'en':
+            translation_response = groq_client.chat.completions.create(
+                model="llama3-8b-8192",
+                messages=[
+                    {"role": "system", "content": f"Translate the following text to {target_lang_name}. Return ONLY the translated text, no quotes, no explanation."},
+                    {"role": "user", "content": text}
+                ],
+                temperature=0.3
+            )
+            translated_text = translation_response.choices[0].message.content.strip()
+
+        # 2. Generate Audio using Edge-TTS
+        voice_map = {
+            'ha': 'ha-NG-MajeNeural',
+            'pcm': 'en-NG-AbeoNeural', # Best approximation for Pidgin
+            'en': 'en-US-GuyNeural'
+        }
+        voice = voice_map.get(lang, 'en-US-GuyNeural')
+
+        async def generate_audio(text, voice):
+            communicate = edge_tts.Communicate(text, voice)
+            audio_data = b""
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_data += chunk["data"]
+            return audio_data
+
+        # Run async function synchronously
+        audio_bytes = asyncio.run(generate_audio(translated_text, voice))
+
+        return Response(audio_bytes, mimetype='audio/mpeg')
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Existing: Audio Transcription and Extraction
 @app.route('/api/translate', methods=['POST'])
 def translate_audio():
     try:
@@ -83,7 +135,6 @@ def translate_audio():
         
         audio_file = request.files['audio']
         
-        # 1. Send to Groq for Speech-to-Text
         transcription = groq_client.audio.transcriptions.create(
             file=(audio_file.filename, audio_file.read(), "audio/webm"),
             model="whisper-large-v3",
@@ -92,7 +143,6 @@ def translate_audio():
         )
         raw_text = transcription.text
 
-        # 2. Mock LiteLLM response (We will wire the real one later)
         mock_result = {
             "dialect": "Hausa",
             "statement": raw_text,
@@ -102,13 +152,12 @@ def translate_audio():
             "source": "Nigerian Standard Treatment Guidelines"
         }
         
-        # 3. SAVE TO DATABASE
         new_encounter = Encounter(
             dialect=mock_result['dialect'],
             statement=mock_result['statement'],
             translation=mock_result['translation'],
             conclusion=mock_result['conclusion'],
-            tier='GREEN' # We will calculate this dynamically later
+            tier='GREEN'
         )
         db.session.add(new_encounter)
         db.session.commit()
