@@ -373,20 +373,18 @@ def tts_instruction():
         }), 500
 
 # --- KNOWLEDGE BASE LOOKUP HELPER ---
-def query_knowledge_base(symptoms):
+def query_knowledge_base(symptoms, vitals_str):
     """
     Uses the existing LiteLLM client (Code for Africa) to query medical guidelines.
     """
     try:
-        # If Code for Africa gave you a specific model name for the KB, put it in Vercel env vars as KB_MODEL_NAME
-        # Otherwise, it defaults to your standard LLM_MODEL
         kb_model = os.getenv("KB_MODEL_NAME", os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"))
         
         response = litellm_client.chat.completions.create(
             model=kb_model,
             messages=[
-                {"role": "system", "content": "You are a strict Medical Knowledge Base containing the Nigerian Standard Treatment Guidelines. Given a set of symptoms, return ONLY the relevant clinical facts, standard protocols, and first-line treatment guidelines. Do NOT provide a final diagnosis. Just provide the raw medical context."},
-                {"role": "user", "content": f"Symptoms: {symptoms}"}
+                {"role": "system", "content": "You are a strict Medical Knowledge Base containing the Nigerian Standard Treatment Guidelines. Given symptoms and vitals, return ONLY the relevant clinical facts, standard protocols, and first-line treatment guidelines. Do NOT provide a final diagnosis."},
+                {"role": "user", "content": f"Symptoms: {symptoms}\nVitals: {vitals_str}"}
             ],
             temperature=0.1
         )
@@ -414,10 +412,21 @@ def diagnosis_assessment():
             encounter = Encounter(patient_name=patient_name)
             db.session.add(encounter)
 
-        # 1. QUERY THE KNOWLEDGE BASE (LiteLLM)
-        kb_context = query_knowledge_base(symptoms)
+        # Parse Vitals
+        temp = data.get('temp')
+        hr = data.get('hr')
+        sys_bp = data.get('sys_bp')
+        dia_bp = data.get('dia_bp')
+        spo2 = data.get('spo2')
 
-        # 2. THE SYSTEMIC FOOTPRINT ALGORITHM PROMPT (Now grounded in KB Context)
+        # Format vitals for the prompt
+        vitals_dict = {k: v for k, v in {'Temp': temp, 'HR': hr, 'SysBP': sys_bp, 'DiaBP': dia_bp, 'SpO2': spo2}.items() if v is not None}
+        vitals_str = ", ".join([f"{k}: {v}" for k, v in vitals_dict.items()]) if vitals_dict else "Not provided"
+
+        # 1. QUERY THE KNOWLEDGE BASE
+        kb_context = query_knowledge_base(symptoms, vitals_str)
+
+        # 2. THE SYSTEMIC FOOTPRINT ALGORITHM PROMPT
         prompt = f"""
         You are an expert medical AI using the "Systemic Footprint Algorithm" for diagnosis in a Nigerian clinical setting.
         
@@ -427,8 +436,11 @@ def diagnosis_assessment():
         PATIENT SYMPTOMS:
         "{symptoms}"
 
+        PATIENT VITALS:
+        {vitals_str}
+
         Follow this exact logical process:
-        1. SYSTEM MAPPING: Identify which bodily systems are affected.
+        1. SYSTEM MAPPING: Identify which bodily systems are affected by the symptoms and vitals.
         2. FOOTPRINT MATCHING: Which diseases naturally leave this specific combination of systemic effects?
         3. REGIONAL WEIGHTING: Adjust likelihood based on Nigeria (prioritize Malaria, Typhoid, Lassa, Sickle Cell).
         4. CROSS-REFERENCE: Ensure your diagnosis strictly aligns with the provided Knowledge Base Context.
@@ -437,7 +449,7 @@ def diagnosis_assessment():
         {{
           "primary_diagnosis": "Most likely disease",
           "differentials": ["Alternative 1", "Alternative 2"],
-          "footprint_reasoning": "Brief explanation of how symptoms map to systems and why regional factors support this.",
+          "footprint_reasoning": "Brief explanation of how symptoms and vitals map to systems and why regional factors support this.",
           "medications": "Suggested first-line treatments or actions based on guidelines"
         }}
         """
@@ -452,12 +464,20 @@ def diagnosis_assessment():
         # Save to DB
         encounter.diagnosis_notes = f"Primary: {ai_data.get('primary_diagnosis')}. Reasoning: {ai_data.get('footprint_reasoning')}"
         encounter.diagnosis_medications = ai_data.get('medications')
+        
+        # Update vitals in DB if provided
+        if vitals_dict:
+            # Merge with existing vitals if any
+            existing_vitals = json.loads(encounter.vitals_json) if encounter.vitals_json else {}
+            existing_vitals.update(vitals_dict)
+            encounter.vitals_json = json.dumps(existing_vitals)
+            
         encounter.current_stage = 'diagnosis'
         db.session.commit()
 
         return jsonify({
             "encounter_id": encounter.id,
-            "diagnosis_data": ai_data
+            "message": "Diagnosis saved successfully."
         })
     except Exception as e:
         logger.error(f"❌ Diagnosis Error: {traceback.format_exc()}")
