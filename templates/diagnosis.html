@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="pb-20">
+    <div class="flex items-center gap-3 mb-6">
+        <a href="/" class="w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-full transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+        </a>
+        <h1 class="text-xl font-black text-slateDark">Diagnosis Engine</h1>
+    </div>
+
+    <div class="space-y-6">
+        <!-- Symptoms -->
+        <div class="space-y-2">
+            <label class="text-xs font-bold uppercase text-slate-500">Medical Issues / Symptoms</label>
+            <textarea id="symptoms" class="w-full min-h-24 p-4 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald" placeholder="Describe patient complaints..."></textarea>
+        </div>
+
+        <!-- Vitals -->
+        <div class="space-y-2">
+            <label class="text-xs font-bold uppercase text-slate-500">Vitals Input</label>
+            <div class="grid grid-cols-2 gap-3">
+                <input type="number" id="d_temp" placeholder="Temp (°C)" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-white font-bold focus:outline-none focus:ring-2 focus:ring-emerald">
+                <input type="number" id="d_sys" placeholder="Sys BP" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-white font-bold focus:outline-none focus:ring-2 focus:ring-emerald">
+                <input type="number" id="d_dia" placeholder="Dia BP" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-white font-bold focus:outline-none focus:ring-2 focus:ring-emerald">
+                <input type="number" id="d_spo2" placeholder="SpO2 (%)" class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-white font-bold focus:outline-none focus:ring-2 focus:ring-emerald">
+            </div>
+        </div>
+
+        <button onclick="runDiagnosis()" class="w-full min-h-14 bg-slateDark text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slateDark/90 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+            Run Systemic Footprint Algorithm
+        </button>
+
+        <!-- Verdict Area -->
+        <div id="verdictArea" class="hidden space-y-4 mt-6">
+            <div id="verdictBox" class="p-4 rounded-xl border-2"></div>
+            
+            <div class="flex gap-3">
+                <select id="langSelect" class="flex-1 min-h-12 px-3 rounded-xl border border-slate-200 bg-white font-bold focus:outline-none focus:ring-2 focus:ring-emerald">
+                    <option value="en">English</option>
+                    <option value="ha">Hausa</option>
+                    <option value="pcm">Pidgin</option>
+                </select>
+                <button onclick="readVerdict()" class="flex-1 min-h-12 bg-skyBlue text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-skyBlue/90 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
+                    Read Out
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentVerdictText = "";
+
+    function runDiagnosis() {
+        const temp = parseFloat(document.getElementById('d_temp').value);
+        const sys = parseFloat(document.getElementById('d_sys').value);
+        
+        let tier = 'GREEN';
+        if (temp > 39.5 || sys > 160) tier = 'RED';
+        else if (temp > 38.5 || sys > 140) tier = 'AMBER';
+
+        const verdictText = `Based on the systemic footprint algorithm, the patient is classified as ${tier} tier. Immediate clinical evaluation is required.`;
+        currentVerdictText = verdictText;
+
+        const box = document.getElementById('verdictBox');
+        box.className = `p-4 rounded-xl border-2 ${tier === 'RED' ? 'bg-red-50 border-crimson' : tier === 'AMBER' ? 'bg-amber/10 border-amber' : 'bg-emerald/10 border-emerald'}`;
+        box.innerHTML = `
+            <p class="text-xs font-black uppercase text-slate-500">Severity Tier</p>
+            <p class="text-lg font-black text-slateDark">${tier} TIER</p>
+            <p class="text-sm font-medium text-slate-700 mt-2">${verdictText}</p>
+        `;
+
+        document.getElementById('verdictArea').classList.remove('hidden');
+    }
+
+    function readVerdict() {
+        if (!currentVerdictText) return;
+        const utterance = new SpeechSynthesisUtterance(currentVerdictText);
+        const lang = document.getElementById('langSelect').value;
+        utterance.lang = lang === 'ha' ? 'ha-NG' : 'en-NG';
+        window.speechSynthesis.speak(utterance);
+    }
+</script>
+{% endblock %}
