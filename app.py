@@ -148,6 +148,12 @@ def generate_referral_code():
         if not Encounter.query.filter_by(referral_code=code).first():
             return code
 
+def make_qr_data_uri(text):
+    img = qrcode.make(text)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
+
 # ==========================================
 # 4. FRONTEND ROUTES
 # ==========================================
