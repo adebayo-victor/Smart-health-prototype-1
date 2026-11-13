@@ -201,6 +201,159 @@ def extract_keywords_and_answer(translated_text, past_memories_text):
         logger.error(f"❌ AI Extraction Error: {e}")
         return {"answer_english": "Error", "answer_hausa": "Na sami matsala, gwada sake.", "keywords": []}
 
+import re
+import threading
+import asyncio
+import edge_tts
+from edge_tts.exceptions import NoAudioReceived
+
+# ==========================================
+# PATIENT-FACING HELPERS (Search Logic)
+# ==========================================
+
+def extract_search_keywords(text):
+    """
+    Quick extraction to find words for the database search.
+    Keeps words > 3 letters and numbers.
+    """
+    text = text.lower()
+    text = re.sub(r'[^\w\s]', '', text)
+    words = text.split()
+    stop_words = {'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'who', 'boy', 'did', 'she', 'use', 'way', 'many', 'would', 'there', 'their', 'na', 'wetin', 'dey', 'abi', 'sha', 'ko', 'ni', 'ta', 'da', 'wu'}
+    
+    keywords = []
+    for word in words:
+        if word.isdigit() or (len(word) > 3 and word not in stop_words):
+            keywords.append(word)
+    return list(set(keywords))
+
+# ==========================================
+# PATIENT-FACING API ROUTE
+# ==========================================
+
+@app.route('/api/patient_voice', methods=['POST'])
+def patient_voice():
+    try:
+        # 1. Get Inputs
+        phone_number = request.form.get('phone_number')
+        language = request.form.get('language', 'ha')
+        audio_file = request.files.get('audio')
+
+        if not phone_number or not audio_file:
+            return jsonify({"error": "Missing phone number or audio."}), 400
+
+        # 2. Get or Create Patient
+        patient = Patient.query.filter_by(phone_number=phone_number).first()
+        if not patient:
+            patient = Patient(phone_number=phone_number, preferred_language=language)
+            db.session.add(patient)
+            db.session.flush()
+
+        # 3. Speech to Text (Groq Whisper)
+        transcription = groq_client.audio.transcriptions.create(
+            file=(audio_file.filename, audio_file.read(), "audio/webm"),
+            model="whisper-large-v3",
+            prompt=f"This is a medical question in {language}.",
+            response_format="text"
+        )
+        user_text = transcription.text.strip()
+        if not user_text:
+            return jsonify({"error": "Could not understand audio."}), 400
+
+        # 4. Translate to English (if not English)
+        translated_text = user_text
+        if language != 'en':
+            lang_map = {'ha': 'Hausa', 'pcm': 'Nigerian Pidgin'}
+            tr = litellm_client.chat.completions.create(
+                model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"),
+                messages=[{"role": "system", "content": f"Translate to English. Return ONLY the translated text."}, {"role": "user", "content": user_text}],
+                temperature=0.3
+            )
+            translated_text = tr.choices[0].message.content.strip()
+
+        # 5. MEMORY RETRIEVAL
+        # Short-term: Last 10 messages
+        short_term = ChatMessage.query.filter_by(patient_id=patient.id).order_by(ChatMessage.created_at.desc()).limit(10).all()
+        short_term.reverse() # Chronological order
+        short_term_text = "\n".join([f"{m.role}: {m.translated_text or m.original_text}" for m in short_term])
+
+        # Long-term: Search DB using rough keywords
+        search_keywords = extract_search_keywords(translated_text)
+        long_term_text = ""
+        if search_keywords:
+            # Find memories that have ANY of these keywords
+            memories = MemoryIndex.query.filter(
+                MemoryIndex.patient_id == patient.id,
+                MemoryIndex.keywords.any(Keyword.word.in_(search_keywords))
+            ).order_by(MemoryIndex.created_at.desc()).limit(5).all()
+            
+            long_term_text = "\n".join([f"Past Context: {m.context_chunk}" for m in memories])
+
+        # 6. AI CALL (Answer + Final Keywords)
+        ai_response = extract_keywords_and_answer(translated_text, long_term_text)
+        
+        answer_english = ai_response.get("answer_english", "")
+        answer_hausa = ai_response.get("answer_hausa", answer_english)
+        final_keywords = ai_response.get("keywords", [])
+
+        # 7. SAVE TO DATABASE
+        # Save Chat Messages
+        user_msg = ChatMessage(patient_id=patient.id, role='user', original_text=user_text, translated_text=translated_text)
+        ai_msg = ChatMessage(patient_id=patient.id, role='ai', original_text=answer_hausa, translated_text=answer_english)
+        db.session.add_all([user_msg, ai_msg])
+
+        # Save Memory Index with Integer Mapping
+        if final_keywords:
+            memory_chunk = f"User: {translated_text}\nAI: {answer_english}"
+            new_memory = MemoryIndex(patient_id=patient.id, context_chunk=memory_chunk)
+            
+            for kw in final_keywords:
+                keyword_obj = get_or_create_keyword(kw)
+                new_memory.keywords.append(keyword_obj)
+                
+            db.session.add(new_memory)
+        
+        db.session.commit()
+
+        # 8. TEXT TO SPEECH (Edge-TTS with Threading Fix)
+        voice_map = {
+            'ha': 'ha-NG-MaryamNeural',
+            'pcm': 'en-NG-EzinneNeural',
+            'en': 'en-US-JennyNeural'
+        }
+        voice = voice_map.get(language, 'ha-NG-MaryamNeural')
+        audio_base64 = None
+
+        def run_tts():
+            nonlocal audio_base64
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                async def fetch():
+                    c = edge_tts.Communicate(text=answer_hausa, voice=voice)
+                    chunks = [ch["data"] async for ch in c.stream() if ch["type"] == "audio"]
+                    return b"".join(chunks)
+                audio_bytes = loop.run_until_complete(fetch())
+                audio_base64 = "data:audio/mpeg;base64," + base64.b64encode(audio_bytes).decode('utf-8')
+                loop.close()
+            except Exception:
+                pass
+
+        thread = threading.Thread(target=run_tts)
+        thread.start()
+        thread.join(timeout=15)
+
+        # 9. Return Response
+        return jsonify({
+            "user_text": user_text,
+            "ai_text_hausa": answer_hausa,
+            "audio_url": audio_base64 # Frontend will play this directly
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Patient Voice Error: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
 # ==========================================
 # 2. HELPERS & AUTH
 # ==========================================
