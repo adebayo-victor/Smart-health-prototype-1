@@ -9,6 +9,7 @@ import re
 import threading
 import base64
 import io
+from gtts import gTTS
 from functools import wraps
 from datetime import datetime
 
@@ -391,6 +392,66 @@ def lookup_patient():
             "created_at": encounter.created_at.strftime('%Y-%m-%d %H:%M')
         })
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/tts_instruction', methods=['POST'])
+def tts_instruction():
+    try:
+        data = request.get_json()
+        text = data.get('text')
+        language = data.get('language', 'en')
+
+        if not text:
+            return jsonify({"error": "No text provided"}), 400
+
+        # 1. Translate the instruction to the target language (if needed)
+        target_text = text
+        if language != 'en':
+            lang_map = {'ha': 'Hausa', 'pcm': 'Nigerian Pidgin'}
+            target_lang_name = lang_map.get(language, 'Hausa')
+            
+            try:
+                tr = litellm_client.chat.completions.create(
+                    model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"),
+                    messages=[
+                        {"role": "system", "content": f"Translate the following medical instruction to {target_lang_name}. Return ONLY the translated text, no quotes."},
+                        {"role": "user", "content": text}
+                    ],
+                    temperature=0.3
+                )
+                target_text = tr.choices[0].message.content.strip()
+            except Exception as e:
+                logger.error(f"⚠️ Translation failed, using original text: {e}")
+
+        # 2. Generate Audio using lightweight gTTS
+        audio_base64 = None
+        try:
+            # gTTS language codes: 'ha' for Hausa, 'en' for English (and closest match for Pidgin)
+            gtts_lang = 'ha' if language == 'ha' else 'en'
+            
+            tts = gTTS(text=target_text, lang=gtts_lang, slow=False)
+            
+            # Write to memory (perfect for Vercel serverless, no disk I/O)
+            audio_fp = io.BytesIO()
+            tts.write_to_fp(audio_fp)
+            audio_fp.seek(0)
+            
+            # Encode to base64 for the frontend
+            audio_bytes = audio_fp.read()
+            audio_base64 = "data:audio/mp3;base64," + base64.b64encode(audio_bytes).decode('utf-8')
+            logger.info(f"✅ gTTS instruction audio generated successfully for {language}.")
+            
+        except Exception as e:
+            logger.error(f"❌ gTTS failed for instruction: {e}")
+            return jsonify({"error": "Failed to generate audio."}), 500
+
+        return jsonify({
+            "audio_url": audio_base64,
+            "translated_text": target_text
+        })
+
+    except Exception as e:
+        logger.error(f"❌ TTS Instruction Error: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/patient_voice', methods=['POST'])
