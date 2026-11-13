@@ -79,6 +79,7 @@ class Encounter(db.Model):
     referral_reason = db.Column(db.Text, nullable=True)
     referral_facility = db.Column(db.String(100), nullable=True)
     referral_code = db.Column(db.String(20), nullable=True, unique=True)  # NEW
+    referral_qr = db.Column(db.Text, nullable=True)   # stored PNG as base64 data URI
     tc_steps_referral = db.Column(db.Text, nullable=True)
 
     # TRACKING
