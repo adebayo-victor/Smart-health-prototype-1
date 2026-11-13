@@ -7,3 +7,5 @@ python-dotenv==1.0.1
 python-multipart==0.0.9
 gunicorn
 httpx<0.28.0
+qrcode
+Pillow
