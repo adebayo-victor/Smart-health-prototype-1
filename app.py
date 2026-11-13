@@ -110,6 +110,98 @@ with app.app_context():
         logger.info("✅ Seeded facilities and workers.")
 
 # ==========================================
+# PATIENT-FACING DATABASE MODELS
+# ==========================================
+
+class Patient(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    phone_number = db.Column(db.String(20), unique=True, nullable=False, index=True)
+    display_name = db.Column(db.String(50), nullable=True)
+    preferred_language = db.Column(db.String(10), default='ha') # 'ha', 'pcm', 'en'
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Keyword(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    word = db.Column(db.String(50), unique=True, nullable=False, index=True)
+
+class ChatMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey('patient.id'), nullable=False, index=True)
+    
+    role = db.Column(db.String(10), nullable=False) # 'user' or 'ai'
+    original_text = db.Column(db.Text, nullable=False) # Hausa/Pidgin
+    translated_text = db.Column(db.Text, nullable=True) # English
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class MemoryIndex(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey('patient.id'), nullable=False, index=True)
+    
+    context_chunk = db.Column(db.Text, nullable=False) # The summary of the exchange
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # The Integer Mapping (Inverted Index)
+    keywords = db.relationship('Keyword', secondary='memory_keywords', backref='memories')
+
+# Association table for Many-to-Many relationship between Memory and Keywords
+memory_keywords = db.Table('memory_keywords',
+    db.Column('memory_id', db.Integer, db.ForeignKey('memory_index.id'), primary_key=True),
+    db.Column('keyword_id', db.Integer, db.ForeignKey('keyword.id'), primary_key=True)
+)
+
+# ==========================================
+# PATIENT-FACING HELPERS
+# ==========================================
+
+def get_or_create_keyword(word):
+    """Finds a keyword by word, or creates it and returns the ID."""
+    word = word.lower().strip()
+    kw = Keyword.query.filter_by(word=word).first()
+    if not kw:
+        kw = Keyword(word=word)
+        db.session.add(kw)
+        db.session.flush() # Get the ID without committing yet
+    return kw
+
+def extract_keywords_and_answer(translated_text, past_memories_text):
+    """
+    Uses LiteLLM to answer the question AND extract keywords in one go.
+    """
+    prompt = f"""
+    You are a trusted, empathetic health worker speaking to a Nigerian woman. 
+    Answer her question directly, simply, and calmly. If there are red-flag symptoms, advise her to see a doctor immediately.
+
+    PAST CONTEXT (Her history):
+    {past_memories_text if past_memories_text else 'No past history.'}
+
+    CURRENT QUESTION (Translated to English): 
+    "{translated_text}"
+
+    Return ONLY valid JSON in this exact format:
+    {{
+      "answer_english": "The medical answer in simple English.",
+      "answer_hausa": "The translation of your medical advice in simple Hausa.",
+      "keywords": ["word1", "word2", "number3"] 
+    }}
+    """
+    
+    try:
+        response = litellm_client.chat.completions.create(
+            model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"),
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3
+        )
+        raw = response.choices[0].message.content.strip()
+        # Clean markdown if AI adds it
+        if raw.startswith("```json"): raw = raw[7:]
+        if raw.endswith("```"): raw = raw[:-3]
+        return json.loads(raw.strip())
+    except Exception as e:
+        logger.error(f"❌ AI Extraction Error: {e}")
+        return {"answer_english": "Error", "answer_hausa": "Na sami matsala, gwada sake.", "keywords": []}
+
+# ==========================================
 # 2. HELPERS & AUTH
 # ==========================================
 def login_required(f):
