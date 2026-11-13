@@ -127,14 +127,13 @@
                 body: JSON.stringify({ text: text, language: lang })
             });
 
+            const data = await response.json();
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Server error');
+                throw new Error(data.error || 'Server error');
             }
             
-            const audioBlob = await response.blob();
-            const audioUrl = URL.createObjectURL(audioBlob);
-            const audio = new Audio(audioUrl);
+            // Play the base64 audio URL returned by the backend
+            const audio = new Audio(data.audio_url);
             
             audio.onended = () => {
                 btn.disabled = false;
@@ -148,18 +147,18 @@
                 playIcon.classList.remove('hidden');
                 loadingIcon.classList.add('hidden');
                 btnText.innerText = 'Play Instruction';
+                alert('Error playing audio.');
             };
             
             await audio.play();
-            } catch (error) {
-                btn.disabled = false;
-                playIcon.classList.remove('hidden');
-                loadingIcon.classList.add('hidden');
-                btnText.innerText = 'Play Instruction';
-                
-                // THIS IS THE FIX: It will now show the exact error from Python
-                alert('Error: ' + error.message); 
-            }
+            
+        } catch (error) {
+            btn.disabled = false;
+            playIcon.classList.remove('hidden');
+            loadingIcon.classList.add('hidden');
+            btnText.innerText = 'Play Instruction';
+            alert('Error: ' + error.message); 
+        }
     }
 
     // --- 2. AUDIO RECORDING & UPLOAD ---
