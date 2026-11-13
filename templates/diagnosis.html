@@ -3,7 +3,7 @@
 {% block content %}
 <div class="pb-20">
     <div class="flex items-center gap-3 mb-6">
-        <!-- Back Button: Now intercepts if analysis is pending -->
+        <!-- Back Button: Intercepts if analysis is pending -->
         <button onclick="handleBack()" class="w-10 h-10 flex items-center justify-center text-slate-500 hover:bg-slate-100 rounded-full transition">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
         </button>
@@ -137,7 +137,7 @@ async function analyzeSymptoms() {
 
         currentEncounterId = data.encounter_id;
         analysisComplete = true;
-        renderOptions(data.options, data.reasoning);
+        renderOptions(data.options, data.reasoning, data.source_reference);
     } catch (error) {
         alert('Error: ' + error.message);
         document.getElementById('analyzeBtn').classList.remove('hidden');
@@ -146,9 +146,15 @@ async function analyzeSymptoms() {
     }
 }
 
-function renderOptions(options, reasoning) {
+function renderOptions(options, reasoning, source) {
     document.getElementById('selectionArea').classList.remove('hidden');
-    document.getElementById('aiReasoning').innerText = reasoning;
+    
+    // Display Reasoning and Source
+    let reasoningHtml = reasoning;
+    if (source && source !== "Unknown") {
+        reasoningHtml += `<br><br><span class="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-1 rounded inline-block mt-2">📚 Source: ${source}</span>`;
+    }
+    document.getElementById('aiReasoning').innerHTML = reasoningHtml;
     
     const container = document.getElementById('optionsContainer');
     container.innerHTML = '';
@@ -196,19 +202,15 @@ async function saveDiagnosis() {
     }
 }
 
-// --- NEW: Back Button Logic ---
+// --- Back Button Logic ---
 function handleBack() {
-    // If analysis hasn't run yet, just leave
     if (!analysisComplete) {
         window.location.href = '/';
         return;
     }
-    
-    // If analysis ran but nothing selected, show modal
     if (!selectedDiagnosis) {
         document.getElementById('unsavedModal').classList.remove('hidden');
     } else {
-        // If they selected something but didn't click save, just leave (or you could prompt here too)
         window.location.href = '/';
     }
 }
@@ -219,8 +221,6 @@ function closeModal() {
 
 async function saveAsUndiagnosed() {
     if (!currentEncounterId) return;
-    
-    // Close modal and show loading on button
     closeModal();
     const saveBtn = document.getElementById('saveBtn');
     saveBtn.innerText = 'Saving as Undiagnosed...';
