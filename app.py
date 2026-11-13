@@ -35,14 +35,60 @@ with app.app_context():
 # ==========================================
 # AI CLIENTS
 # ==========================================
-# 1. Groq Client (For Speech-to-Text / Audio)
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# 2. LiteLLM Client (For Text Translation / LLM)
 litellm_client = OpenAI(
     api_key=os.getenv("LITELLM_API_KEY"),
     base_url=os.getenv("LITELLM_BASE_URL")
 )
+
+# ==========================================
+# EDGE-TTS SERVICE LAYER (Inspired by backend/services/edge_tts_service.py)
+# ==========================================
+VOICE_MAP = {
+    'ha': {'female': 'ha-NG-MaryamNeural', 'male': 'ha-NG-AliNeural'},
+    'pcm': {'female': 'en-NG-EzinneNeural', 'male': 'en-NG-AbeoNeural'},
+    'en': {'female': 'en-US-JennyNeural', 'male': 'en-US-GuyNeural'}
+}
+
+def resolve_voice(lang: str, gender: str = 'female') -> str:
+    """Resolves the appropriate Edge-TTS voice based on language and gender."""
+    lang_lower = lang.lower()
+    gender_lower = gender.lower()
+    
+    if lang_lower in VOICE_MAP:
+        if gender_lower in VOICE_MAP[lang_lower]:
+            return VOICE_MAP[lang_lower][gender_lower]
+        return VOICE_MAP[lang_lower]['female']  # Fallback to female
+    
+    return 'en-US-GuyNeural'  # Default fallback
+
+async def generate_speech_async(text: str, voice: str) -> bytes:
+    """
+    Generates MP3 audio bytes using edge-tts with robust async streaming.
+    Avoids disk I/O by keeping chunks in memory (serverless-safe).
+    """
+    try:
+        communicate = edge_tts.Communicate(
+            text=text,
+            voice=voice,
+            rate="+0%",    # e.g., "-10%" for slower, "+15%" for faster
+            volume="+0%",  # e.g., "+10%" or "-10%"
+            pitch="+0Hz"   # e.g., "+5Hz" or "-5Hz"
+        )
+        
+        audio_chunks = []
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_chunks.append(chunk["data"])
+        
+        if not audio_chunks:
+            raise ValueError("No audio chunks received from Edge-TTS. Voice may be unsupported or IP blocked.")
+            
+        return b"".join(audio_chunks)
+        
+    except Exception as e:
+        raise RuntimeError(f"Edge-TTS generation failed: {str(e)}")
 
 # ==========================================
 # FRONTEND ROUTES
@@ -79,6 +125,7 @@ def tts_instruction():
         data = request.get_json()
         text = data.get('text')
         lang = data.get('language', 'en')
+        gender = data.get('gender', 'female')  # New parameter supported by voice resolver
 
         if not text:
             return jsonify({"error": "No text provided"}), 400
@@ -99,37 +146,17 @@ def tts_instruction():
             )
             translated_text = translation_response.choices[0].message.content.strip()
 
-        # 2. Generate Audio using Edge-TTS with enhanced parameters
-        voice_map = {
-            'ha': 'ha-NG-MaryamNeural',   # Female Hausa (Change to 'ha-NG-AliNeural' for male)
-            'pcm': 'en-NG-AbeoNeural',    # Nigerian English (best for Pidgin)
-            'en': 'en-US-GuyNeural'       # Standard English
-        }
-        voice = voice_map.get(lang, 'en-US-GuyNeural')
+        # 2. Resolve Voice
+        voice = resolve_voice(lang, gender)
 
-        async def generate_audio(text, voice):
-            # Initialize Communicate with optional rate, volume, and pitch adjustments
-            communicate = edge_tts.Communicate(
-                text=text,
-                voice=voice,
-                rate="+0%",    # e.g., "-10%" for slower, "+15%" for faster
-                volume="+0%",  # e.g., "+10%" or "-10%"
-                pitch="+0Hz"   # e.g., "+5Hz" or "-5Hz"
-            )
-            
-            # Stream directly to memory to avoid disk I/O issues on Vercel/Serverless
-            audio_data = b""
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    audio_data += chunk["data"]
-            return audio_data
-
-        audio_bytes = asyncio.run(generate_audio(translated_text, voice))
+        # 3. Generate Audio (Memory-safe, no disk writes)
+        audio_bytes = asyncio.run(generate_speech_async(translated_text, voice))
         return Response(audio_bytes, mimetype='audio/mpeg')
 
     except Exception as e:
-        # This sends the exact error back to the frontend so we can see it
+        app.logger.error(f"TTS Instruction Error: {str(e)}")
         return jsonify({"error": f"TTS generation failed: {str(e)}"}), 500
+
 
 @app.route('/api/translate', methods=['POST'])
 def translate_audio():
@@ -169,7 +196,9 @@ def translate_audio():
         
         return jsonify(mock_result)
     except Exception as e:
+        app.logger.error(f"Audio Translation Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
