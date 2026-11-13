@@ -394,6 +394,84 @@ def lookup_patient():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/translate', methods=['POST'])
+@login_required
+def translate_audio():
+    try:
+        audio_file = request.files.get('audio')
+        if not audio_file:
+            return jsonify({"error": "No audio file provided."}), 400
+
+        audio_data = audio_file.read()
+        if len(audio_data) < 2000:
+            return jsonify({"error": "Audio too short. Please record at least 2 seconds."}), 400
+
+        # 1. Transcribe with Groq Whisper
+        transcription = groq_client.audio.transcriptions.create(
+            file=(audio_file.filename or "audio.webm", audio_data, "audio/webm"),
+            model="whisper-large-v3",
+            response_format="text"
+        )
+        raw_text = transcription.strip() if isinstance(transcription, str) else transcription.text.strip()
+        if not raw_text:
+            return jsonify({"error": "No speech detected. Please try again."}), 400
+
+        # 2. Extract structured medical data with LiteLLM
+        prompt = f"""
+        You are a medical data extraction assistant. Analyze this patient statement recorded by a health worker in Nigeria.
+        The statement may be in Hausa, Nigerian Pidgin, or English.
+
+        STATEMENT: "{raw_text}"
+
+        Return ONLY valid JSON (no markdown, no extra text):
+        {{
+          "patient_name": "Patient's name if mentioned, otherwise 'Unnamed Patient'",
+          "dialect": "Detected language: Hausa, Pidgin, or English",
+          "statement": "The original statement exactly as transcribed",
+          "translation": "The statement translated into clear English",
+          "vitals": {{
+            "temp": "temperature in Celsius or 'N/A'",
+            "bp_sys": "systolic BP or 'N/A'",
+            "bp_dia": "diastolic BP or 'N/A'",
+            "spo2": "oxygen saturation % or 'N/A'"
+          }},
+          "conclusion": "One-sentence clinical summary of the main complaint"
+        }}
+        """
+        response = litellm_client.chat.completions.create(
+            model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"),
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2
+        )
+        raw = response.choices[0].message.content.strip()
+        if raw.startswith("```json"): raw = raw[7:]
+        elif raw.startswith("```"): raw = raw[3:]
+        if raw.endswith("```"): raw = raw[:-3]
+        data = json.loads(raw.strip())
+
+        # 3. Persist to the database so it shows on the Dashboard
+        encounter = Encounter(
+            patient_name=data.get("patient_name", "Unnamed Patient"),
+            dialect=data.get("dialect"),
+            statement=data.get("statement"),
+            translation=data.get("translation"),
+            vitals_json=json.dumps(data.get("vitals", {})),
+            current_stage="translation",
+            status="active"
+        )
+        db.session.add(encounter)
+        db.session.commit()
+
+        data["encounter_id"] = encounter.id
+        return jsonify(data)
+
+    except json.JSONDecodeError:
+        logger.error("❌ AI returned malformed JSON")
+        return jsonify({"error": "AI returned malformed data. Please try again."}), 500
+    except Exception as e:
+        logger.error(f"❌ Translate Error: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/tts_instruction', methods=['POST'])
 def tts_instruction():
     try:
