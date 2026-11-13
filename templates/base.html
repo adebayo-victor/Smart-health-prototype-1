@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SmartHealth PWA</title>
     
+    <!-- PWA MANIFEST LINK (ADD THIS) -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#0F172A">
+    
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -43,7 +47,7 @@
                 </div>
                 <h1 class="text-lg font-black tracking-tight">SmartHealth PWA</h1>
             </div>
-            <!-- Quick Nav for Testing -->
+            <!-- Quick Nav -->
             <nav class="flex gap-2 text-xs font-bold overflow-x-auto pb-1">
                 <a href="/" class="px-3 py-1 bg-white/10 rounded-full hover:bg-white/20 whitespace-nowrap">Home</a>
                 <a href="/dashboard" class="px-3 py-1 bg-white/10 rounded-full hover:bg-white/20 whitespace-nowrap">Dashboard</a>
@@ -55,10 +59,21 @@
         </div>
     </header>
 
-    <!-- Main Content (Injected by child templates) -->
+    <!-- Main Content -->
     <main class="flex-1 max-w-2xl mx-auto w-full p-6">
         {% block content %}{% endblock %}
     </main>
+
+    <!-- SERVICE WORKER REGISTRATION (ADD THIS AT THE BOTTOM) -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/static/sw.js')
+                    .then(reg => console.log('SW registered!', reg))
+                    .catch(err => console.log('SW registration failed: ', err));
+            });
+        }
+    </script>
 
 </body>
 </html>
