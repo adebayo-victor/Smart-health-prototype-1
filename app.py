@@ -1,10 +1,13 @@
 import os
+import json
+import random
+import string
 import asyncio
 import logging
 import traceback
-import json
 from flask import Flask, render_template, request, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 from dotenv import load_dotenv
 from groq import Groq
@@ -12,47 +15,69 @@ from openai import OpenAI
 import edge_tts
 from edge_tts.exceptions import NoAudioReceived
 
-# Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
 load_dotenv()
 
 app = Flask(__name__)
 
 # ==========================================
-# 1. NEW MODULAR DATABASE CONFIGURATION
+# 1. DATABASE CONFIGURATION
 # ==========================================
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/smarthealth.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
+# --- WORKER MODEL (for login / access later) ---
+class Worker(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
+    full_name = db.Column(db.String(100), nullable=False)
+    role = db.Column(db.String(20), nullable=False, default='CHW')  # CHW, TBA, Doctor, Admin
+    facility = db.Column(db.String(100), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+# --- MEDICAL CENTER MODEL (destination dropdown) ---
+class MedicalCenter(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    location = db.Column(db.String(100), nullable=True)
+
+# --- ENCOUNTER MODEL (modular, all stages nullable) ---
 class Encounter(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     patient_name = db.Column(db.String(100), nullable=False)
-    
+
     # STAGE 1: TRANSLATION
     dialect = db.Column(db.String(50), nullable=True)
     statement = db.Column(db.Text, nullable=True)
     translation = db.Column(db.Text, nullable=True)
     vitals_json = db.Column(db.Text, nullable=True)
     tc_steps_translation = db.Column(db.Text, nullable=True)
-    
+
     # STAGE 2: TRIAGE
     triage_tier = db.Column(db.String(10), nullable=True)
     triage_notes = db.Column(db.Text, nullable=True)
     tc_steps_triage = db.Column(db.Text, nullable=True)
-    
+
     # STAGE 3: DIAGNOSIS
     diagnosis_notes = db.Column(db.Text, nullable=True)
     diagnosis_medications = db.Column(db.Text, nullable=True)
     tc_steps_diagnosis = db.Column(db.Text, nullable=True)
-    
+
     # STAGE 4: REFERRAL
     referral_reason = db.Column(db.Text, nullable=True)
     referral_facility = db.Column(db.String(100), nullable=True)
+    referral_code = db.Column(db.String(20), nullable=True, unique=True)  # NEW
     tc_steps_referral = db.Column(db.Text, nullable=True)
-    
+
     # TRACKING
     current_stage = db.Column(db.String(20), default='translation')
     status = db.Column(db.String(20), default='active')
@@ -61,6 +86,32 @@ class Encounter(db.Model):
 
 with app.app_context():
     db.create_all()
+
+    # SEED WORKERS
+    if Worker.query.count() == 0:
+        workers = [
+            Worker(username="chw_amina", full_name="Amina Bello", role="CHW", facility="Kano Primary Center"),
+            Worker(username="tba_musa", full_name="Musa Ibrahim", role="TBA", facility="Rural Outpost 4"),
+            Worker(username="dr_yusuf", full_name="Dr. Yusuf Ali", role="Doctor", facility="Murtala Muhammed Specialist Hospital"),
+        ]
+        for w in workers:
+            w.set_password("password123")
+            db.session.add(w)
+
+    # SEED CENTERS
+    if MedicalCenter.query.count() == 0:
+        centers = [
+            MedicalCenter(name="Murtala Muhammed Specialist Hospital", location="Kano"),
+            MedicalCenter(name="Aminu Kano Teaching Hospital", location="Kano"),
+            MedicalCenter(name="National Hospital", location="Abuja"),
+            MedicalCenter(name="University College Hospital (UCH)", location="Ibadan"),
+            MedicalCenter(name="Lagos University Teaching Hospital (LUTH)", location="Lagos"),
+            MedicalCenter(name="Local Primary Health Center", location="Local"),
+        ]
+        db.session.add_all(centers)
+
+    db.session.commit()
+    logger.info("✅ Seeded workers and medical centers.")
 
 # ==========================================
 # 2. AI CLIENTS
@@ -72,12 +123,11 @@ litellm_client = OpenAI(
 )
 
 # ==========================================
-# 3. HELPER: Get or Create Encounter
+# 3. HELPERS
 # ==========================================
 def get_or_create_encounter(data):
     encounter_id = data.get('encounter_id')
     patient_name = data.get('patient_name', 'Unknown Patient')
-    
     if encounter_id:
         encounter = Encounter.query.get(encounter_id)
         if not encounter:
@@ -89,57 +139,49 @@ def get_or_create_encounter(data):
         db.session.add(encounter)
     return encounter
 
+def generate_referral_code():
+    while True:
+        code = "SH-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        if not Encounter.query.filter_by(referral_code=code).first():
+            return code
+
 # ==========================================
 # 4. FRONTEND ROUTES
 # ==========================================
 @app.route('/')
 def home(): return render_template('start.html')
-
 @app.route('/login')
 def login(): return render_template('login.html')
-
 @app.route('/translator')
 def translator(): return render_template('translator.html')
-
 @app.route('/triage')
 def triage(): return render_template('triage.html')
-
 @app.route('/diagnosis')
 def diagnosis(): return render_template('diagnosis.html')
-
 @app.route('/referral')
 def referral(): return render_template('referral.html')
-
+@app.route('/lookup')
+def lookup_page(): return render_template('lookup.html')
 
 @app.route('/dashboard')
 def dashboard():
-    # Get filter and search parameters
     filter_tier = request.args.get('tier', 'all')
     filter_stage = request.args.get('stage', 'all')
     search_query = request.args.get('search', '').strip()
-    
-    # Start with all encounters, ordered by newest first
+
     query = Encounter.query.order_by(Encounter.created_at.desc())
-    
-    # 1. Apply Search Filter (Case-insensitive)
     if search_query:
         query = query.filter(Encounter.patient_name.ilike(f"%{search_query}%"))
-        
-    # 2. Apply Tier Filter
     if filter_tier != 'all':
         query = query.filter(Encounter.triage_tier == filter_tier.upper())
-        
-    # 3. Apply Stage Filter
     if filter_stage != 'all':
         stage_map = {'triage': 'triage', 'diagnosis': 'diagnosis', 'referred': 'referral'}
         if filter_stage in stage_map:
             query = query.filter(Encounter.current_stage == stage_map[filter_stage])
-            
-    encounters = query.all()
-    
-    return render_template('dashboard.html', 
-                           encounters=encounters, 
-                           current_tier=filter_tier, 
+
+    return render_template('dashboard.html',
+                           encounters=query.all(),
+                           current_tier=filter_tier,
                            current_stage=filter_stage,
                            current_search=search_query)
 
@@ -147,104 +189,64 @@ def dashboard():
 # 5. BACKEND API ROUTES
 # ==========================================
 
-# --- TRIAGE ROUTE (THE MISSING PIECE) ---
+# --- CENTERS (for referral dropdown) ---
+@app.route('/api/centers', methods=['GET'])
+def get_centers():
+    centers = MedicalCenter.query.all()
+    return jsonify([{"id": c.id, "name": c.name, "location": c.location} for c in centers])
+
+# --- TRIAGE (offline vitals math) ---
 @app.route('/api/triage', methods=['POST'])
 def triage_assessment():
     try:
         data = request.get_json()
         patient_name = data.get('patient_name')
-        
         if not patient_name:
             return jsonify({"error": "Patient name is required"}), 400
 
-        # Parse the 5 core vitals
-        temp = data.get('temp')
-        sys_bp = data.get('sys_bp')
-        dia_bp = data.get('dia_bp')
-        spo2 = data.get('spo2')
-        hr = data.get('hr')
+        temp = data.get('temp'); sys_bp = data.get('sys_bp'); dia_bp = data.get('dia_bp')
+        spo2 = data.get('spo2'); hr = data.get('hr')
+        tier = 'GREEN'; triggers = []; notes = []
 
-        tier = 'GREEN'
-        triggers = []
-        notes = []
-
-        # 1. Temperature Logic
         if temp is not None:
             if temp >= 39.0 or temp <= 34.9:
-                tier = 'RED'
-                triggers.append(f"Temperature ({temp}°C)")
-                notes.append("Critical fever or hypothermia.")
+                tier = 'RED'; triggers.append(f"Temperature ({temp}°C)"); notes.append("Critical fever or hypothermia.")
             elif 37.5 <= temp <= 38.9 and tier != 'RED':
-                tier = 'YELLOW'
-                triggers.append(f"Temperature ({temp}°C)")
-                notes.append("Elevated temperature.")
-
-        # 2. Blood Pressure Logic
+                tier = 'YELLOW'; triggers.append(f"Temperature ({temp}°C)"); notes.append("Elevated temperature.")
         if sys_bp is not None or dia_bp is not None:
             if (sys_bp is not None and sys_bp >= 140) or (dia_bp is not None and dia_bp >= 90):
-                tier = 'RED'
-                bp_str = f"{sys_bp or '?'}/{dia_bp or '?'}"
-                triggers.append(f"Blood Pressure ({bp_str} mmHg)")
-                notes.append("Hypertensive crisis.")
+                tier = 'RED'; triggers.append(f"Blood Pressure ({sys_bp or '?'}/{dia_bp or '?'} mmHg)"); notes.append("Hypertensive crisis.")
             elif ((sys_bp is not None and 120 <= sys_bp <= 139) or (dia_bp is not None and 80 <= dia_bp <= 89)) and tier != 'RED':
-                tier = 'YELLOW'
-                bp_str = f"{sys_bp or '?'}/{dia_bp or '?'}"
-                triggers.append(f"Blood Pressure ({bp_str} mmHg)")
-                notes.append("Elevated blood pressure.")
-
-        # 3. SpO2 Logic
+                tier = 'YELLOW'; triggers.append(f"Blood Pressure ({sys_bp or '?'}/{dia_bp or '?'} mmHg)"); notes.append("Elevated blood pressure.")
         if spo2 is not None:
             if spo2 < 90:
-                tier = 'RED'
-                triggers.append(f"SpO2 ({spo2}%)")
-                notes.append("Severe hypoxemia.")
+                tier = 'RED'; triggers.append(f"SpO2 ({spo2}%)"); notes.append("Severe hypoxemia.")
             elif 90 <= spo2 <= 94 and tier != 'RED':
-                tier = 'YELLOW'
-                triggers.append(f"SpO2 ({spo2}%)")
-                notes.append("Mild hypoxemia.")
-
-        # 4. Heart Rate Logic
+                tier = 'YELLOW'; triggers.append(f"SpO2 ({spo2}%)"); notes.append("Mild hypoxemia.")
         if hr is not None:
             if hr > 120 or hr < 50:
-                tier = 'RED'
-                triggers.append(f"Heart Rate ({hr} BPM)")
-                notes.append("Severe tachycardia or bradycardia.")
+                tier = 'RED'; triggers.append(f"Heart Rate ({hr} BPM)"); notes.append("Severe tachycardia or bradycardia.")
             elif (101 <= hr <= 119 or 50 <= hr <= 59) and tier != 'RED':
-                tier = 'YELLOW'
-                triggers.append(f"Heart Rate ({hr} BPM)")
-                notes.append("Mild tachycardia or bradycardia.")
+                tier = 'YELLOW'; triggers.append(f"Heart Rate ({hr} BPM)"); notes.append("Mild tachycardia or bradycardia.")
 
-        # Format Output
         trigger_text = ", ".join(triggers) if triggers else "All recorded vitals within stable ranges"
         note_text = " ".join(notes) if notes else "Patient is stable."
 
-        # Save to Database (No TC steps for Triage)
         encounter = Encounter(patient_name=patient_name)
         encounter.triage_tier = tier
         encounter.triage_notes = note_text
-        
-        # Save raw vitals as JSON string
         vitals_dict = {k: v for k, v in {'temp': temp, 'sys_bp': sys_bp, 'dia_bp': dia_bp, 'spo2': spo2, 'hr': hr}.items() if v is not None}
         encounter.vitals_json = json.dumps(vitals_dict)
         encounter.current_stage = 'triage'
-        
-        db.session.add(encounter)
-        db.session.commit()
+        db.session.add(encounter); db.session.commit()
 
-        return jsonify({
-            "encounter_id": encounter.id,
-            "triage_data": {
-                "tier": tier,
-                "trigger": trigger_text,
-                "notes": note_text
-            }
-        })
+        return jsonify({"encounter_id": encounter.id,
+                        "triage_data": {"tier": tier, "trigger": trigger_text, "notes": note_text}})
     except Exception as e:
         logger.error(f"❌ Triage Error: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
-
-# --- TRANSLATION ROUTE (Updated to require patient_name and use new model) ---
+# --- TRANSLATION (mock extraction; fixed invalid kwargs) ---
 @app.route('/api/translate', methods=['POST'])
 def translate_audio():
     try:
@@ -252,24 +254,18 @@ def translate_audio():
         patient_name = data.get('patient_name')
         if not patient_name:
             return jsonify({"error": "Patient name is required"}), 400
-            
         if 'audio' not in request.files:
             return jsonify({"error": "No audio file provided"}), 400
-        
+
         audio_file = request.files['audio']
-        logger.debug(f"🎤 Received audio file: {audio_file.filename}")
-        
         transcription = groq_client.audio.transcriptions.create(
             file=(audio_file.filename, audio_file.read(), "audio/webm"),
             model="whisper-large-v3",
             prompt="This is a medical intake in Nigerian Pidgin or Hausa.",
             response_format="json"
         )
-        
         raw_text = transcription.text
-        logger.debug(f"✅ Groq STT successful: {raw_text}")
-        
-        # For now, keeping your mock result structure but mapping to new DB columns
+
         mock_result = {
             "dialect": "Hausa",
             "statement": raw_text,
@@ -278,7 +274,7 @@ def translate_audio():
             "conclusion": "Acute febrile illness. Monitor for malaria.",
             "tc_steps": ["Check patient's forehead for heat", "Ask patient to point to the pain area"]
         }
-        
+
         new_encounter = Encounter(
             patient_name=patient_name,
             dialect=mock_result['dialect'],
@@ -286,167 +282,55 @@ def translate_audio():
             translation=mock_result['translation'],
             vitals_json=json.dumps(mock_result['vitals']),
             tc_steps_translation=json.dumps(mock_result['tc_steps']),
-            conclusion=mock_result['conclusion'],
-            tier='GREEN'
+            current_stage='translation'
         )
-        db.session.add(new_encounter)
-        db.session.commit()
-        
-        return jsonify({
-            "encounter_id": new_encounter.id,
-            "patient_name": patient_name,
-            "dialect": mock_result['dialect'],
-            "statement": mock_result['statement'],
-            "translation": mock_result['translation'],
-            "vitals": mock_result['vitals'],
-            "conclusion": mock_result['conclusion'],
-            "tc_steps": mock_result['tc_steps']
-        })
+        db.session.add(new_encounter); db.session.commit()
+
+        return jsonify({"encounter_id": new_encounter.id,
+                        "patient_name": patient_name,
+                        "dialect": mock_result['dialect'],
+                        "statement": mock_result['statement'],
+                        "translation": mock_result['translation'],
+                        "vitals": mock_result['vitals'],
+                        "conclusion": mock_result['conclusion'],
+                        "tc_steps": mock_result['tc_steps']})
     except Exception as e:
         logger.error(f"❌ Audio Translation Error: {traceback.format_exc()}")
-        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+        return jsonify({"error": str(e)}), 500
 
-
-# --- TTS ROUTE (Kept exactly as you had it) ---
-@app.route('/api/tts_instruction', methods=['POST'])
-def tts_instruction():
-    try:
-        data = request.get_json()
-        logger.debug(f"🔍 Received TTS request payload: {data}")
-        
-        text = data.get('text')
-        lang = data.get('language', 'en')
-        gender = data.get('gender', 'female')
-
-        if not text:
-            return jsonify({"error": "No text provided"}), 400
-
-        lang_map = {'ha': 'Hausa', 'pcm': 'Nigerian Pidgin', 'en': 'English'}
-        target_lang_name = lang_map.get(lang, 'English')
-        translated_text = text
-        
-        if lang != 'en':
-            logger.debug(f"🔄 Translating to {target_lang_name}...")
-            try:
-                translation_response = litellm_client.chat.completions.create(
-                    model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"),
-                    messages=[
-                        {"role": "system", "content": f"Translate to {target_lang_name}. Return ONLY the translated text."},
-                        {"role": "user", "content": text}
-                    ],
-                    temperature=0.3
-                )
-                translated_text = translation_response.choices[0].message.content.strip()
-                logger.debug(f"✅ Translation successful: {translated_text}")
-            except Exception as e:
-                logger.error(f"❌ LiteLLM Translation failed: {traceback.format_exc()}")
-                return jsonify({"error": f"Translation failed: {str(e)}"}), 500
-
-        voice_map = {
-            'ha': {'female': 'ha-NG-MaryamNeural', 'male': 'ha-NG-AliNeural'},
-            'pcm': {'female': 'en-NG-EzinneNeural', 'male': 'en-NG-AbeoNeural'},
-            'en': {'female': 'en-US-JennyNeural', 'male': 'en-US-GuyNeural'}
-        }
-        voice = voice_map.get(lang, {}).get(gender, 'en-US-GuyNeural')
-        logger.debug(f"🎙️ Using Edge-TTS Voice: {voice}")
-
-        logger.debug("⏳ Starting edge-tts stream generation...")
-        try:
-            async def generate_speech_async():
-                communicate = edge_tts.Communicate(
-                    text=translated_text,
-                    voice=voice,
-                    rate="+0%",
-                    volume="+0%",
-                    pitch="+0Hz"
-                )
-                audio_chunks = []
-                async for chunk in communicate.stream():
-                    if chunk["type"] == "audio":
-                        audio_chunks.append(chunk["data"])
-                
-                if not audio_chunks:
-                    raise ValueError("No audio chunks received from Edge-TTS stream.")
-                return b"".join(audio_chunks)
-
-            audio_bytes = asyncio.run(generate_speech_async())
-            logger.debug(f"🎉 Successfully generated {len(audio_bytes)} bytes of audio.")
-            return Response(audio_bytes, mimetype='audio/mpeg')
-            
-        except NoAudioReceived as e:
-            error_trace = traceback.format_exc()
-            logger.error(f"🚨 Edge-TTS NoAudioReceived: {error_trace}")
-            return jsonify({
-                "error": "No audio received from Microsoft Edge-TTS.",
-                "detail": "This is almost certainly a datacenter IP block by Microsoft on Vercel.",
-                "traceback": error_trace
-            }), 500
-            
-        except Exception as e:
-            error_trace = traceback.format_exc()
-            logger.error(f"🚨 Edge-TTS generation failed: {error_trace}")
-            return jsonify({
-                "error": "Edge-TTS generation failed",
-                "detail": str(e),
-                "traceback": error_trace
-            }), 500
-
-    except Exception as e:
-        error_trace = traceback.format_exc()
-        logger.error(f"💥 Global TTS Error: {error_trace}")
-        return jsonify({
-            "error": "Internal Server Error",
-            "detail": str(e),
-            "traceback": error_trace
-        }), 500
-
-
+# --- DIAGNOSIS (Systemic Footprint + KB, two-step) ---
 @app.route('/api/diagnosis', methods=['POST'])
 def diagnosis_assessment():
     try:
         data = request.get_json()
         patient_name = data.get('patient_name')
         encounter_id = data.get('encounter_id')
-        
-        # --- STEP 2: FINAL SAVE (If a diagnosis was selected) ---
+
         if 'selected_diagnosis' in data:
             if not encounter_id:
                 return jsonify({"error": "Missing encounter ID for saving."}), 400
-            
             encounter = Encounter.query.get(encounter_id)
             if not encounter: return jsonify({"error": "Record not found"}), 404
-            
-            selected = data['selected_diagnosis']
-            encounter.diagnosis_notes = f"Final Diagnosis: {selected}. (AI-assisted selection)"
+            encounter.diagnosis_notes = f"Final Diagnosis: {data['selected_diagnosis']}. (AI-assisted selection)"
             encounter.current_stage = 'diagnosis'
             db.session.commit()
-            
             return jsonify({"message": "Diagnosis confirmed and saved.", "encounter_id": encounter.id})
 
-        # --- STEP 1: GENERATE OPTIONS (AI Analysis) ---
         symptoms = data.get('symptoms', '')
         if not patient_name and not encounter_id:
             return jsonify({"error": "Patient name is required"}), 400
 
-        # Link to existing or create new draft record
         if encounter_id:
             encounter = Encounter.query.get(encounter_id)
         else:
             encounter = Encounter(patient_name=patient_name)
-            db.session.add(encounter)
-            db.session.flush() # Get ID without committing fully yet
+            db.session.add(encounter); db.session.flush()
 
-        # Parse Vitals
-        temp = data.get('temp')
-        hr = data.get('hr')
-        sys_bp = data.get('sys_bp')
-        dia_bp = data.get('dia_bp')
-        spo2 = data.get('spo2')
-
+        temp = data.get('temp'); hr = data.get('hr'); sys_bp = data.get('sys_bp')
+        dia_bp = data.get('dia_bp'); spo2 = data.get('spo2')
         vitals_dict = {k: v for k, v in {'Temp': temp, 'HR': hr, 'SysBP': sys_bp, 'DiaBP': dia_bp, 'SpO2': spo2}.items() if v is not None}
         vitals_str = ", ".join([f"{k}: {v}" for k, v in vitals_dict.items()]) if vitals_dict else "Not provided"
 
-        # 1. QUERY KNOWLEDGE BASE
         try:
             kb_model = os.getenv("KB_MODEL_NAME", os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"))
             kb_response = litellm_client.chat.completions.create(
@@ -454,60 +338,154 @@ def diagnosis_assessment():
                 messages=[
                     {"role": "system", "content": "You are a strict Medical Knowledge Base. Return ONLY relevant clinical facts and protocols for these symptoms/vitals. Do NOT diagnose."},
                     {"role": "user", "content": f"Symptoms: {symptoms}\nVitals: {vitals_str}"}
-                ],
-                temperature=0.1
-            )
+                ], temperature=0.1)
             kb_context = kb_response.choices[0].message.content.strip()
         except Exception:
             kb_context = "Standard Nigerian Treatment Guidelines apply."
 
-        # 2. SYSTEMIC FOOTPRINT PROMPT (Updated to include source_reference)
         prompt = f"""
         You are an expert medical AI using the "Systemic Footprint Algorithm".
-        
         KNOWLEDGE BASE CONTEXT: {kb_context}
         PATIENT SYMPTOMS: "{symptoms}"
         PATIENT VITALS: {vitals_str}
-
-        Return ONLY valid JSON (no markdown) in this exact format:
+        Return ONLY valid JSON (no markdown):
         {{
           "options": ["Primary Diagnosis", "Differential 1", "Differential 2", "None of the above"],
           "reasoning": "Brief 1-sentence explanation of the systemic footprint.",
-          "source_reference": "The specific medical guideline, document, or protocol used from the knowledge base (e.g., 'Nigerian Standard Treatment Guidelines 2023 - Malaria Protocol')"
+          "source_reference": "Specific guideline used (e.g., 'Nigerian Standard Treatment Guidelines 2023 - Malaria Protocol')"
         }}
         """
-        
         llm_response = litellm_client.chat.completions.create(
             model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"),
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2
-        )
-        
-        # Clean AI response (strip markdown if present)
+            messages=[{"role": "user", "content": prompt}], temperature=0.2)
+
         raw_content = llm_response.choices[0].message.content.strip()
         if raw_content.startswith("```json"): raw_content = raw_content[7:]
         if raw_content.startswith("```"): raw_content = raw_content[3:]
         if raw_content.endswith("```"): raw_content = raw_content[:-3]
-        
         ai_data = json.loads(raw_content.strip())
 
-        # Save vitals to the draft record
         if vitals_dict:
             encounter.vitals_json = json.dumps(vitals_dict)
         db.session.commit()
 
-        return jsonify({
-            "encounter_id": encounter.id,
-            "options": ai_data.get('options', []),
-            "reasoning": ai_data.get('reasoning', ''),
-            "source_reference": ai_data.get('source_reference', 'Unknown')
-        })
-
+        return jsonify({"encounter_id": encounter.id,
+                        "options": ai_data.get('options', []),
+                        "reasoning": ai_data.get('reasoning', ''),
+                        "source_reference": ai_data.get('source_reference', 'Unknown')})
     except json.JSONDecodeError:
         return jsonify({"error": "AI returned invalid data format."}), 500
     except Exception as e:
         logger.error(f"❌ Diagnosis Error: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
+
+# --- REFERRAL (generate code + link/create record) ---
+@app.route('/api/referral', methods=['POST'])
+def generate_referral():
+    try:
+        data = request.get_json()
+        patient_name = data.get('patient_name')
+        center_id = data.get('center_id')
+        reason = data.get('reason')
+        encounter_id = data.get('encounter_id')
+
+        if not patient_name or not center_id or not reason:
+            return jsonify({"error": "Patient name, center, and reason are required."}), 400
+
+        center = MedicalCenter.query.get(center_id)
+        if not center: return jsonify({"error": "Invalid medical center."}), 404
+
+        if encounter_id:
+            encounter = Encounter.query.get(encounter_id)
+            if not encounter: return jsonify({"error": "Record not found"}), 404
+        else:
+            encounter = Encounter(patient_name=patient_name)
+            db.session.add(encounter)
+
+        code = generate_referral_code()
+        encounter.referral_reason = reason
+        encounter.referral_facility = center.name
+        encounter.referral_code = code
+        encounter.current_stage = 'referral'
+        encounter.status = 'referred'
+        db.session.commit()
+
+        return jsonify({"encounter_id": encounter.id, "referral_code": code,
+                        "facility": center.name, "patient_name": patient_name, "reason": reason})
+    except Exception as e:
+        logger.error(f"❌ Referral Error: {traceback.format_exc()}")
+        return jsonify({"error": str(e)}), 500
+
+# --- LOOKUP (receiving hospital pulls record by code) ---
+@app.route('/api/lookup', methods=['POST'])
+def lookup_patient():
+    try:
+        data = request.get_json()
+        code = (data.get('code') or '').strip().upper()
+        if not code:
+            return jsonify({"error": "Please enter a referral code."}), 400
+
+        encounter = Encounter.query.filter_by(referral_code=code).first()
+        if not encounter:
+            return jsonify({"error": "No patient found with this code."}), 404
+
+        vitals = json.loads(encounter.vitals_json) if encounter.vitals_json else {}
+        return jsonify({
+            "patient_name": encounter.patient_name,
+            "referral_code": encounter.referral_code,
+            "facility": encounter.referral_facility,
+            "reason": encounter.referral_reason,
+            "triage_tier": encounter.triage_tier,
+            "triage_notes": encounter.triage_notes,
+            "diagnosis": encounter.diagnosis_notes,
+            "medications": encounter.diagnosis_medications,
+            "vitals": vitals,
+            "created_at": encounter.created_at.strftime('%Y-%m-%d %H:%M')
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# --- TTS (kept as-is) ---
+@app.route('/api/tts_instruction', methods=['POST'])
+def tts_instruction():
+    try:
+        data = request.get_json()
+        text = data.get('text'); lang = data.get('language', 'en'); gender = data.get('gender', 'female')
+        if not text: return jsonify({"error": "No text provided"}), 400
+
+        lang_map = {'ha': 'Hausa', 'pcm': 'Nigerian Pidgin', 'en': 'English'}
+        target_lang_name = lang_map.get(lang, 'English')
+        translated_text = text
+        if lang != 'en':
+            try:
+                tr = litellm_client.chat.completions.create(
+                    model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"),
+                    messages=[{"role": "system", "content": f"Translate to {target_lang_name}. Return ONLY the translated text."},
+                              {"role": "user", "content": text}], temperature=0.3)
+                translated_text = tr.choices[0].message.content.strip()
+            except Exception as e:
+                return jsonify({"error": f"Translation failed: {str(e)}"}), 500
+
+        voice_map = {'ha': {'female': 'ha-NG-MaryamNeural', 'male': 'ha-NG-AliNeural'},
+                     'pcm': {'female': 'en-NG-EzinneNeural', 'male': 'en-NG-AbeoNeural'},
+                     'en': {'female': 'en-US-JennyNeural', 'male': 'en-US-GuyNeural'}}
+        voice = voice_map.get(lang, {}).get(gender, 'en-US-GuyNeural')
+
+        try:
+            async def gen():
+                c = edge_tts.Communicate(text=translated_text, voice=voice)
+                chunks = [ch["data"] async for ch in c.stream() if ch["type"] == "audio"]
+                if not chunks: raise ValueError("No audio chunks received.")
+                return b"".join(chunks)
+            audio_bytes = asyncio.run(gen())
+            return Response(audio_bytes, mimetype='audio/mpeg')
+        except NoAudioReceived:
+            return jsonify({"error": "No audio received from Edge-TTS.",
+                            "detail": "Datacenter IP block by Microsoft on Vercel."}), 500
+        except Exception as e:
+            return jsonify({"error": "Edge-TTS generation failed", "detail": str(e)}), 500
+    except Exception as e:
+        return jsonify({"error": "Internal Server Error", "detail": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
