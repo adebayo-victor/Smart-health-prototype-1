@@ -1,3 +1,6 @@
+import qrcode
+import io
+import base64
 import os
 import json
 import random
