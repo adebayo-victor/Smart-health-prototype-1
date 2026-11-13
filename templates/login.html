@@ -1,25 +1,33 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="flex flex-col justify-center min-h-[60vh] max-w-sm mx-auto w-full space-y-6">
-    <div class="space-y-2">
-        <h2 class="text-2xl font-black text-slateDark">Health Worker Login</h2>
-        <p class="text-sm text-slate-500">Enter your credentials to access the clinical tool.</p>
-    </div>
+<div class="max-w-sm mx-auto mt-10">
+    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-center">
+        <div class="w-16 h-16 bg-emerald rounded-xl flex items-center justify-center mx-auto mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+        </div>
+        <h2 class="text-xl font-black text-slateDark mb-1">Health Worker Login</h2>
+        <p class="text-sm text-slate-500 mb-6">Enter your assigned credentials to access the network.</p>
 
-    <div class="space-y-2">
-        <label class="text-xs font-bold text-slate-700 uppercase">Worker ID</label>
-        <input type="text" placeholder="e.g., CHEW-4092" class="w-full min-h-14 px-4 rounded-xl border border-slate-200 bg-white text-lg font-bold focus:outline-none focus:ring-2 focus:ring-emerald">
-        <p class="text-xs text-slate-400 italic pl-1">Your ID is issued by your center.</p>
-    </div>
+        {% if error %}
+        <div class="bg-crimson/10 text-crimson text-xs font-bold p-3 rounded-lg mb-4">{{ error }}</div>
+        {% endif %}
 
-    <a href="/translator" class="block w-full min-h-14 bg-emerald hover:bg-emerald/90 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-md mt-4">
-        Proceed
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-        </svg>
-    </a>
-    
-    <a href="/" class="text-center text-sm font-bold text-slate-500 hover:text-slateDark mt-4">← Back to Home</a>
+        <form method="POST" class="space-y-4 text-left">
+            <div>
+                <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Worker Code / Username</label>
+                <input type="text" name="username" required class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-surfaceLight text-base font-bold focus:outline-none focus:ring-2 focus:ring-emerald" placeholder="e.g., MU2789">
+            </div>
+            <div>
+                <label class="text-[10px] font-bold text-slate-400 uppercase block mb-1">Password</label>
+                <input type="password" name="password" required class="w-full min-h-12 px-3 rounded-lg border border-slate-200 bg-surfaceLight text-base font-bold focus:outline-none focus:ring-2 focus:ring-emerald" placeholder="••••••••">
+            </div>
+            <button type="submit" class="w-full min-h-14 bg-slateDark text-white rounded-xl font-bold hover:bg-slateDark/90 transition mt-2">
+                Secure Login
+            </button>
+        </form>
+    </div>
 </div>
 {% endblock %}
