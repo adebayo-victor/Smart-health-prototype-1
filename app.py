@@ -5,9 +5,9 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from dotenv import load_dotenv
 from groq import Groq
+from openai import OpenAI # We use OpenAI SDK to talk to LiteLLM
 import edge_tts
 
-# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
@@ -15,12 +15,10 @@ app = Flask(__name__)
 # ==========================================
 # DATABASE CONFIGURATION
 # ==========================================
-# Use /tmp/ for Vercel serverless compatibility
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/smarthealth.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# Define the 'Encounter' table structure
 class Encounter(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     patient_name = db.Column(db.String(100), nullable=False, default='Unknown Patient')
@@ -31,41 +29,37 @@ class Encounter(db.Model):
     tier = db.Column(db.String(10), default='GREEN')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-# Create the database tables when the app starts
 with app.app_context():
     db.create_all()
 
-# Initialize Groq client
+# ==========================================
+# AI CLIENTS
+# ==========================================
+# 1. Groq Client (For Speech-to-Text / Audio)
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+# 2. LiteLLM Client (For Text Translation / LLM)
+# We use the OpenAI SDK but point it to your LiteLLM base URL
+litellm_client = OpenAI(
+    api_key=os.getenv("LITELLM_API_KEY"),
+    base_url=os.getenv("LITELLM_BASE_URL")
+)
 
 # ==========================================
 # FRONTEND ROUTES
 # ==========================================
-
 @app.route('/')
-def home():
-    return render_template('start.html')
-
+def home(): return render_template('start.html')
 @app.route('/login')
-def login():
-    return render_template('login.html')
-
+def login(): return render_template('login.html')
 @app.route('/translator')
-def translator():
-    return render_template('translator.html')
-
+def translator(): return render_template('translator.html')
 @app.route('/triage')
-def triage():
-    return render_template('triage.html')
-
+def triage(): return render_template('triage.html')
 @app.route('/diagnosis')
-def diagnosis():
-    return render_template('diagnosis.html')
-
+def diagnosis(): return render_template('diagnosis.html')
 @app.route('/referral')
-def referral():
-    return render_template('referral.html')
-
+def referral(): return render_template('referral.html')
 @app.route('/dashboard')
 def dashboard():
     encounters = Encounter.query.order_by(Encounter.created_at.desc()).all()
@@ -75,7 +69,7 @@ def dashboard():
 # BACKEND API ROUTES
 # ==========================================
 
-# NEW: Translate Text and Generate Audio (Edge-TTS)
+# NEW: Translate Text and Generate Audio (LiteLLM + Edge-TTS)
 @app.route('/api/tts_instruction', methods=['POST'])
 def tts_instruction():
     try:
@@ -86,14 +80,15 @@ def tts_instruction():
         if not text:
             return jsonify({"error": "No text provided"}), 400
 
-        # 1. Translate text using Groq (if not English)
+        # 1. Translate text using LiteLLM (if not English)
         lang_map = {'ha': 'Hausa', 'pcm': 'Nigerian Pidgin', 'en': 'English'}
         target_lang_name = lang_map.get(lang, 'English')
         
         translated_text = text
         if lang != 'en':
-            translation_response = groq_client.chat.completions.create(
-                model="llama3-8b-8192",
+            # Use LiteLLM via OpenAI SDK
+            translation_response = litellm_client.chat.completions.create(
+                model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"), # Uses your LLM_MODEL secret
                 messages=[
                     {"role": "system", "content": f"Translate the following text to {target_lang_name}. Return ONLY the translated text, no quotes, no explanation."},
                     {"role": "user", "content": text}
@@ -105,7 +100,7 @@ def tts_instruction():
         # 2. Generate Audio using Edge-TTS
         voice_map = {
             'ha': 'ha-NG-MajeNeural',
-            'pcm': 'en-NG-AbeoNeural', # Best approximation for Pidgin
+            'pcm': 'en-NG-AbeoNeural', 
             'en': 'en-US-GuyNeural'
         }
         voice = voice_map.get(lang, 'en-US-GuyNeural')
@@ -118,15 +113,14 @@ def tts_instruction():
                     audio_data += chunk["data"]
             return audio_data
 
-        # Run async function synchronously
         audio_bytes = asyncio.run(generate_audio(translated_text, voice))
-
         return Response(audio_bytes, mimetype='audio/mpeg')
 
     except Exception as e:
+        # This sends the exact error back to the frontend so we can see it
         return jsonify({"error": str(e)}), 500
 
-# Existing: Audio Transcription and Extraction
+# Existing: Audio Transcription (Uses Groq directly for STT)
 @app.route('/api/translate', methods=['POST'])
 def translate_audio():
     try:
