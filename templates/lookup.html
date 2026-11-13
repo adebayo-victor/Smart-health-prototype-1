@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="pb-20 max-w-2xl mx-auto">
+    <div class="text-center mb-8 mt-4">
+        <h1 class="text-2xl font-black text-slate-800 mb-2">Patient Lookup</h1>
+        <p class="text-sm text-slate-500">Enter the referral code provided by the patient.</p>
+    </div>
+
+    <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mb-6">
+        <div class="flex gap-2">
+            <input type="text" id="codeInput" class="flex-1 min-h-14 px-4 rounded-xl border-2 border-slate-200 bg-slate-50 text-xl font-black text-center uppercase tracking-wider focus:outline-none focus:border-emerald-500" placeholder="e.g., SH-7K92MP">
+            <button onclick="lookupPatient()" class="min-h-14 px-6 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition">Search</button>
+        </div>
+        <p id="errorMsg" class="hidden text-red-600 text-sm font-bold mt-3 text-center"></p>
+    </div>
+
+    <div id="patientRecord" class="hidden space-y-4">
+        <div class="bg-emerald-50 p-5 rounded-2xl border-2 border-emerald-500 text-center">
+            <p class="text-[10px] font-black uppercase text-emerald-700 mb-1">Patient Identified</p>
+            <h2 id="pName" class="text-2xl font-black text-emerald-900"></h2>
+            <p class="text-xs font-bold text-emerald-700 mt-1">Code: <span id="pCode"></span> • Referred: <span id="pDate"></span></p>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200">
+            <p class="text-[10px] font-black uppercase text-slate-400 mb-1">Referral Reason</p>
+            <p id="pReason" class="text-sm font-bold text-slate-800"></p>
+            <p class="text-xs text-slate-500 mt-2">To: <span id="pFacility" class="font-bold text-slate-700"></span></p>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200">
+            <p class="text-[10px] font-black uppercase text-slate-400 mb-1">Triage & Vitals</p>
+            <p id="pTriage" class="text-sm font-medium text-slate-700"></p>
+            <p id="pVitals" class="text-xs text-slate-500 mt-2"></p>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200">
+            <p class="text-[10px] font-black uppercase text-slate-400 mb-1">Diagnosis & Treatment</p>
+            <p id="pDiag" class="text-sm font-medium text-slate-700"></p>
+            <p id="pMeds" class="text-xs text-slate-500 mt-2"></p>
+        </div>
+    </div>
+</div>
+
+<script>
+async function lookupPatient() {
+    const code = document.getElementById('codeInput').value.trim();
+    const errorMsg = document.getElementById('errorMsg');
+    const record = document.getElementById('patientRecord');
+    if (!code) { errorMsg.innerText = "Please enter a referral code."; errorMsg.classList.remove('hidden'); record.classList.add('hidden'); return; }
+
+    try {
+        const response = await fetch('/api/lookup', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code })
+        });
+        const raw = await response.text();
+        let data; try { data = JSON.parse(raw); } catch (e) { throw new Error("Server error."); }
+        if (!response.ok) throw new Error(data.error || 'Patient not found.');
+
+        errorMsg.classList.add('hidden');
+        record.classList.remove('hidden');
+        document.getElementById('pName').innerText = data.patient_name;
+        document.getElementById('pCode').innerText = data.referral_code;
+        document.getElementById('pDate').innerText = data.created_at;
+        document.getElementById('pReason').innerText = data.reason;
+        document.getElementById('pFacility').innerText = data.facility;
+        document.getElementById('pTriage').innerText = data.triage_notes || "No triage notes available.";
+        const vKeys = Object.keys(data.vitals || {});
+        document.getElementById('pVitals').innerText = vKeys.length ? "Vitals: " + vKeys.map(k => `${k}: ${data.vitals[k]}`).join(", ") : "";
+        document.getElementById('pDiag').innerText = data.diagnosis || "No diagnosis recorded.";
+        document.getElementById('pMeds').innerText = data.medications ? "Meds: " + data.medications : "";
+    } catch (error) {
+        record.classList.add('hidden');
+        errorMsg.innerText = error.message;
+        errorMsg.classList.remove('hidden');
+    }
+}
+</script>
+{% endblock %}
