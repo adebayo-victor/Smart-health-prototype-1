@@ -5,7 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from dotenv import load_dotenv
 from groq import Groq
-from openai import OpenAI # We use OpenAI SDK to talk to LiteLLM
+from openai import OpenAI  # We use OpenAI SDK to talk to LiteLLM
 import edge_tts
 
 load_dotenv()
@@ -39,7 +39,6 @@ with app.app_context():
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # 2. LiteLLM Client (For Text Translation / LLM)
-# We use the OpenAI SDK but point it to your LiteLLM base URL
 litellm_client = OpenAI(
     api_key=os.getenv("LITELLM_API_KEY"),
     base_url=os.getenv("LITELLM_BASE_URL")
@@ -50,16 +49,22 @@ litellm_client = OpenAI(
 # ==========================================
 @app.route('/')
 def home(): return render_template('start.html')
+
 @app.route('/login')
 def login(): return render_template('login.html')
+
 @app.route('/translator')
 def translator(): return render_template('translator.html')
+
 @app.route('/triage')
 def triage(): return render_template('triage.html')
+
 @app.route('/diagnosis')
 def diagnosis(): return render_template('diagnosis.html')
+
 @app.route('/referral')
 def referral(): return render_template('referral.html')
+
 @app.route('/dashboard')
 def dashboard():
     encounters = Encounter.query.order_by(Encounter.created_at.desc()).all()
@@ -68,8 +73,6 @@ def dashboard():
 # ==========================================
 # BACKEND API ROUTES
 # ==========================================
-
-# NEW: Translate Text and Generate Audio (LiteLLM + Edge-TTS)
 @app.route('/api/tts_instruction', methods=['POST'])
 def tts_instruction():
     try:
@@ -83,12 +86,11 @@ def tts_instruction():
         # 1. Translate text using LiteLLM (if not English)
         lang_map = {'ha': 'Hausa', 'pcm': 'Nigerian Pidgin', 'en': 'English'}
         target_lang_name = lang_map.get(lang, 'English')
-        
         translated_text = text
+        
         if lang != 'en':
-            # Use LiteLLM via OpenAI SDK
             translation_response = litellm_client.chat.completions.create(
-                model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"), # Uses your LLM_MODEL secret
+                model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"),
                 messages=[
                     {"role": "system", "content": f"Translate the following text to {target_lang_name}. Return ONLY the translated text, no quotes, no explanation."},
                     {"role": "user", "content": text}
@@ -97,16 +99,25 @@ def tts_instruction():
             )
             translated_text = translation_response.choices[0].message.content.strip()
 
-        # 2. Generate Audio using Edge-TTS
+        # 2. Generate Audio using Edge-TTS with enhanced parameters
         voice_map = {
-            'ha': 'ha-NG-MajeNeural',
-            'pcm': 'en-NG-AbeoNeural', 
-            'en': 'en-US-GuyNeural'
+            'ha': 'ha-NG-MaryamNeural',   # Female Hausa (Change to 'ha-NG-AliNeural' for male)
+            'pcm': 'en-NG-AbeoNeural',    # Nigerian English (best for Pidgin)
+            'en': 'en-US-GuyNeural'       # Standard English
         }
         voice = voice_map.get(lang, 'en-US-GuyNeural')
 
         async def generate_audio(text, voice):
-            communicate = edge_tts.Communicate(text, voice)
+            # Initialize Communicate with optional rate, volume, and pitch adjustments
+            communicate = edge_tts.Communicate(
+                text=text,
+                voice=voice,
+                rate="+0%",    # e.g., "-10%" for slower, "+15%" for faster
+                volume="+0%",  # e.g., "+10%" or "-10%"
+                pitch="+0Hz"   # e.g., "+5Hz" or "-5Hz"
+            )
+            
+            # Stream directly to memory to avoid disk I/O issues on Vercel/Serverless
             audio_data = b""
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
@@ -118,9 +129,8 @@ def tts_instruction():
 
     except Exception as e:
         # This sends the exact error back to the frontend so we can see it
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"TTS generation failed: {str(e)}"}), 500
 
-# Existing: Audio Transcription (Uses Groq directly for STT)
 @app.route('/api/translate', methods=['POST'])
 def translate_audio():
     try:
@@ -135,8 +145,9 @@ def translate_audio():
             prompt="This is a medical intake in Nigerian Pidgin or Hausa.",
             response_format="json"
         )
+        
         raw_text = transcription.text
-
+        
         mock_result = {
             "dialect": "Hausa",
             "statement": raw_text,
@@ -157,7 +168,6 @@ def translate_audio():
         db.session.commit()
         
         return jsonify(mock_result)
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
