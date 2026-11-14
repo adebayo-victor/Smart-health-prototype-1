@@ -198,21 +198,29 @@ def extract_search_keywords(text):
             keywords.append(word)
     return list(set(keywords))
 
-def extract_keywords_and_answer(translated_text, past_memories_text, target_language_name):
+def extract_keywords_and_answer(user_text, translated_text, past_memories_text):
     prompt = f"""
-    You are a trusted, empathetic health worker speaking to a Nigerian woman. 
-    Answer her question directly, simply, and calmly. If there are red-flag symptoms, advise her to see a doctor immediately.
+    You are a trusted, empathetic health worker speaking to a Nigerian patient. 
+    Answer their question directly, simply, and calmly. If there are red-flag symptoms, advise them to see a doctor immediately.
 
-    PAST CONTEXT (Her history):
+    PAST CONTEXT (Their history):
     {past_memories_text if past_memories_text else 'No past history.'}
 
-    CURRENT QUESTION (Translated to English): 
+    CURRENT QUESTION (Translated to English for your understanding): 
     "{translated_text}"
+    
+    ORIGINAL QUESTION (Use this ONLY to detect the language they are speaking):
+    "{user_text}"
+
+    INSTRUCTIONS:
+    1. Detect the language of the ORIGINAL QUESTION (it will be Hausa, Nigerian Pidgin, or English).
+    2. Formulate your medical answer in THAT EXACT SAME DETECTED LANGUAGE.
 
     Return ONLY valid JSON in this exact format:
     {{
-      "answer_english": "The medical answer in simple English.",
-      "answer_local": "The translation of your medical advice in simple {target_language_name}.",
+      "answer_english": "The medical answer in simple English (for our records).",
+      "answer_local": "Your medical answer in the DETECTED language (Hausa, Pidgin, or English).",
+      "detected_language": "Hausa", "Pidgin", or "English",
       "keywords": ["word1", "word2", "number3"] 
     }}
     """
@@ -228,7 +236,7 @@ def extract_keywords_and_answer(translated_text, past_memories_text, target_lang
         return json.loads(raw.strip())
     except Exception as e:
         logger.error(f"❌ AI Extraction Error: {e}")
-        return {"answer_english": "Error", "answer_local": "Na sami matsala, gwada sake.", "keywords": []}
+        return {"answer_english": "Error", "answer_local": "Na sami matsala, gwada sake.", "detected_language": "Hausa", "keywords": []}
 # ==========================================
 # 5. FRONTEND ROUTES
 # ==========================================
