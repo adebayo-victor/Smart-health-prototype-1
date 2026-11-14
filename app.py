@@ -20,8 +20,6 @@ from dotenv import load_dotenv
 from groq import Groq
 from openai import OpenAI
 import qrcode
-import edge_tts
-from edge_tts.exceptions import NoAudioReceived
 
 # ==========================================
 # 1. APP CONFIGURATION
@@ -37,9 +35,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 # ==========================================
-# 2. DATABASE MODELS (ALL MUST BE HERE)
+# 2. DATABASE MODELS
 # ==========================================
-
 class MedicalCenter(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
@@ -64,25 +61,17 @@ class Worker(db.Model):
 class Encounter(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     patient_name = db.Column(db.String(100), nullable=False)
-    
-    # STAGE 1: TRANSLATION
     dialect = db.Column(db.String(50), nullable=True)
     statement = db.Column(db.Text, nullable=True)
     translation = db.Column(db.Text, nullable=True)
     vitals_json = db.Column(db.Text, nullable=True)
     tc_steps_translation = db.Column(db.Text, nullable=True)
-    
-    # STAGE 2: TRIAGE
     triage_tier = db.Column(db.String(10), nullable=True)
     triage_notes = db.Column(db.Text, nullable=True)
     tc_steps_triage = db.Column(db.Text, nullable=True)
-    
-    # STAGE 3: DIAGNOSIS
     diagnosis_notes = db.Column(db.Text, nullable=True)
     diagnosis_medications = db.Column(db.Text, nullable=True)
     tc_steps_diagnosis = db.Column(db.Text, nullable=True)
-    
-    # STAGE 4: REFERRAL
     referral_reason = db.Column(db.Text, nullable=True)
     referral_facility = db.Column(db.String(100), nullable=True)
     referral_code = db.Column(db.String(20), nullable=True, unique=True)
@@ -91,14 +80,11 @@ class Encounter(db.Model):
     origin_facility_id = db.Column(db.Integer, db.ForeignKey('medical_center.id'), nullable=True)
     destination_facility_id = db.Column(db.Integer, db.ForeignKey('medical_center.id'), nullable=True)
     referral_status = db.Column(db.String(20), default='pending')
-    
-    # TRACKING
     current_stage = db.Column(db.String(20), default='translation')
     status = db.Column(db.String(20), default='active')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-# --- PATIENT-FACING MODELS ---
 class Patient(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     phone_number = db.Column(db.String(20), unique=True, nullable=False, index=True)
@@ -118,7 +104,6 @@ class ChatMessage(db.Model):
     translated_text = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-# Association table for Many-to-Many relationship
 memory_keywords = db.Table('memory_keywords',
     db.Column('memory_id', db.Integer, db.ForeignKey('memory_index.id'), primary_key=True),
     db.Column('keyword_id', db.Integer, db.ForeignKey('keyword.id'), primary_key=True)
@@ -136,7 +121,6 @@ class MemoryIndex(db.Model):
 # ==========================================
 with app.app_context():
     db.create_all()
-    
     if MedicalCenter.query.count() == 0:
         mu = MedicalCenter(name="Murtala Muhammed Specialist Hospital", location="Kano", short_code="MU")
         ak = MedicalCenter(name="Aminu Kano Teaching Hospital", location="Kano", short_code="AK")
@@ -237,6 +221,7 @@ def extract_keywords_and_answer(user_text, translated_text, past_memories_text):
     except Exception as e:
         logger.error(f"❌ AI Extraction Error: {e}")
         return {"answer_english": "Error", "answer_local": "Na sami matsala, gwada sake.", "detected_language": "Hausa", "keywords": []}
+
 # ==========================================
 # 5. FRONTEND ROUTES
 # ==========================================
@@ -251,7 +236,6 @@ def login():
         worker = Worker.query.filter(
             (Worker.username == username) | (Worker.worker_code == username)
         ).first()
-        
         if worker and worker.check_password(password):
             session['worker_id'] = worker.id
             session['facility_id'] = worker.facility_id
@@ -294,17 +278,14 @@ def patient_portal():
 def dashboard():
     worker_id = session['worker_id']
     facility_id = session['facility_id']
-    
     query = Encounter.query.filter(
         db.or_(
             Encounter.origin_worker_id == worker_id,
             Encounter.destination_facility_id == facility_id
         )
     ).order_by(Encounter.created_at.desc())
-    
     encounters = query.all()
     facility_centers = {c.id: c.name for c in MedicalCenter.query.all()}
-    
     return render_template('dashboard.html', 
                            encounters=encounters, 
                            current_worker_id=worker_id,
@@ -314,7 +295,6 @@ def dashboard():
 # ==========================================
 # 6. BACKEND API ROUTES
 # ==========================================
-
 @app.route('/api/centers', methods=['GET'])
 @login_required
 def get_centers():
@@ -330,22 +310,17 @@ def generate_referral():
         center_id = data.get('center_id')
         reason = data.get('reason')
         encounter_id = data.get('encounter_id')
-
         if not patient_name or not center_id or not reason:
             return jsonify({"error": "Patient name, center, and reason are required."}), 400
-
         dest_center = MedicalCenter.query.get(center_id)
         if not dest_center: return jsonify({"error": "Invalid medical center."}), 404
-
         if encounter_id:
             encounter = Encounter.query.get(encounter_id)
         else:
             encounter = Encounter(patient_name=patient_name)
             db.session.add(encounter)
-
         code = generate_referral_code(dest_center.short_code)
         qr_uri = make_qr_data_uri(code)
-
         encounter.referral_reason = reason
         encounter.referral_facility = dest_center.name
         encounter.referral_code = code
@@ -357,7 +332,6 @@ def generate_referral():
         encounter.current_stage = 'referral'
         encounter.status = 'referred'
         db.session.commit()
-
         return jsonify({
             "encounter_id": encounter.id, "referral_code": code, "referral_qr": qr_uri,
             "facility": dest_center.name, "patient_name": patient_name, "reason": reason
@@ -373,17 +347,13 @@ def lookup_patient():
         data = request.get_json()
         code = (data.get('code') or '').strip().upper()
         if not code: return jsonify({"error": "Please enter a referral code."}), 400
-
         encounter = Encounter.query.filter_by(referral_code=code).first()
         if not encounter: return jsonify({"error": "No patient found with this code."}), 404
-
         if encounter.destination_facility_id != session['facility_id']:
             return jsonify({"error": "Access Denied: This referral is not addressed to your facility."}), 403
-
         if encounter.referral_status == 'pending':
             encounter.referral_status = 'fulfilled'
             db.session.commit()
-
         vitals = json.loads(encounter.vitals_json) if encounter.vitals_json else {}
         return jsonify({
             "patient_name": encounter.patient_name,
@@ -408,12 +378,10 @@ def translate_audio():
         audio_file = request.files.get('audio')
         if not audio_file:
             return jsonify({"error": "No audio file provided."}), 400
-
         audio_data = audio_file.read()
         if len(audio_data) < 2000:
             return jsonify({"error": "Audio too short. Please record at least 2 seconds."}), 400
 
-        # 1. Transcribe with Groq Whisper
         transcription = groq_client.audio.transcriptions.create(
             file=(audio_file.filename or "audio.webm", audio_data, "audio/webm"),
             model="whisper-large-v3",
@@ -423,13 +391,10 @@ def translate_audio():
         if not raw_text:
             return jsonify({"error": "No speech detected. Please try again."}), 400
 
-        # 2. Extract structured medical data with LiteLLM
         prompt = f"""
         You are a medical data extraction assistant. Analyze this patient statement recorded by a health worker in Nigeria.
         The statement may be in Hausa, Nigerian Pidgin, or English.
-
         STATEMENT: "{raw_text}"
-
         Return ONLY valid JSON (no markdown, no extra text):
         {{
           "patient_name": "Patient's name if mentioned, otherwise 'Unnamed Patient'",
@@ -456,7 +421,6 @@ def translate_audio():
         if raw.endswith("```"): raw = raw[:-3]
         data = json.loads(raw.strip())
 
-        # 3. Persist to the database so it shows on the Dashboard
         encounter = Encounter(
             patient_name=data.get("patient_name", "Unnamed Patient"),
             dialect=data.get("dialect"),
@@ -464,14 +428,14 @@ def translate_audio():
             translation=data.get("translation"),
             vitals_json=json.dumps(data.get("vitals", {})),
             current_stage="translation",
-            status="active"
+            status="active",
+            origin_worker_id=session.get('worker_id'),
+            origin_facility_id=session.get('facility_id')
         )
         db.session.add(encounter)
         db.session.commit()
-
         data["encounter_id"] = encounter.id
         return jsonify(data)
-
     except json.JSONDecodeError:
         logger.error("❌ AI returned malformed JSON")
         return jsonify({"error": "AI returned malformed data. Please try again."}), 500
@@ -480,21 +444,19 @@ def translate_audio():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/tts_instruction', methods=['POST'])
+@login_required
 def tts_instruction():
     try:
         data = request.get_json()
         text = data.get('text')
         language = data.get('language', 'en')
-
         if not text:
             return jsonify({"error": "No text provided"}), 400
 
-        # 1. Translate the instruction to the target language (if needed)
         target_text = text
         if language != 'en':
             lang_map = {'ha': 'Hausa', 'pcm': 'Nigerian Pidgin'}
             target_lang_name = lang_map.get(language, 'Hausa')
-            
             try:
                 tr = litellm_client.chat.completions.create(
                     model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"),
@@ -508,43 +470,29 @@ def tts_instruction():
             except Exception as e:
                 logger.error(f"⚠️ Translation failed, using original text: {e}")
 
-        # 2. Generate Audio using lightweight gTTS
         audio_base64 = None
         try:
-            # gTTS language codes: 'ha' for Hausa, 'en' for English (and closest match for Pidgin)
             gtts_lang = 'ha' if language == 'ha' else 'en'
-            
             tts = gTTS(text=target_text, lang=gtts_lang, slow=False)
-            
-            # Write to memory (perfect for Vercel serverless, no disk I/O)
             audio_fp = io.BytesIO()
             tts.write_to_fp(audio_fp)
             audio_fp.seek(0)
-            
-            # Encode to base64 for the frontend
             audio_bytes = audio_fp.read()
             audio_base64 = "data:audio/mp3;base64," + base64.b64encode(audio_bytes).decode('utf-8')
             logger.info(f"✅ gTTS instruction audio generated successfully for {language}.")
-            
         except Exception as e:
             logger.error(f"❌ gTTS failed for instruction: {e}")
             return jsonify({"error": "Failed to generate audio."}), 500
 
-        return jsonify({
-            "audio_url": audio_base64,
-            "translated_text": target_text
-        })
-
+        return jsonify({"audio_url": audio_base64, "translated_text": target_text})
     except Exception as e:
         logger.error(f"❌ TTS Instruction Error: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
 
-
-            @app.route('/api/patient_voice', methods=['POST'])
+@app.route('/api/patient_voice', methods=['POST'])
 def patient_voice():
     try:
         phone_number = request.form.get('phone_number')
-        language = request.form.get('language', 'ha')
         audio_file = request.files.get('audio')
 
         if not phone_number or not audio_file:
@@ -556,11 +504,10 @@ def patient_voice():
 
         patient = Patient.query.filter_by(phone_number=phone_number).first()
         if not patient:
-            patient = Patient(phone_number=phone_number, preferred_language=language)
+            patient = Patient(phone_number=phone_number, preferred_language='ha')
             db.session.add(patient)
             db.session.flush()
 
-        # 1. Transcribe
         try:
             transcription = groq_client.audio.transcriptions.create(
                 file=(audio_file.filename or "recording.webm", audio_data, "audio/webm"),
@@ -575,17 +522,12 @@ def patient_voice():
         if not user_text:
             return jsonify({"error": "No speech detected."}), 400
 
-        # 2. Translate to English for the AI
-        translated_text = user_text
-        if language != 'en':
-            tr = litellm_client.chat.completions.create(
-                model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"),
-                messages=[{"role": "system", "content": "Translate to English. Return ONLY the translated text."}, {"role": "user", "content": user_text}],
-                temperature=0.3
-            )
-            translated_text = tr.choices[0].message.content.strip()
+        translated_text = litellm_client.chat.completions.create(
+            model=os.getenv("LLM_MODEL", "gemini/gemini-1.5-flash"),
+            messages=[{"role": "system", "content": "Translate to English. Return ONLY the translated text."}, {"role": "user", "content": user_text}],
+            temperature=0.3
+        ).choices[0].message.content.strip()
 
-        # 3. Memory Retrieval
         short_term = ChatMessage.query.filter_by(patient_id=patient.id).order_by(ChatMessage.created_at.desc()).limit(10).all()
         short_term.reverse()
         short_term_text = "\n".join([f"{m.role}: {m.translated_text or m.original_text}" for m in short_term])
@@ -599,17 +541,14 @@ def patient_voice():
             ).order_by(MemoryIndex.created_at.desc()).limit(5).all()
             long_term_text = "\n".join([f"Past Context: {m.context_chunk}" for m in memories])
 
-        # 4. AI Call (Passing the target language name)
-        lang_map = {'ha': 'Hausa', 'pcm': 'Nigerian Pidgin', 'en': 'English'}
-        target_lang_name = lang_map.get(language, 'Hausa')
-        
-        ai_response = extract_keywords_and_answer(translated_text, long_term_text, target_lang_name)
+        # AI Call with auto-detection
+        ai_response = extract_keywords_and_answer(user_text, translated_text, long_term_text)
         
         answer_english = ai_response.get("answer_english", "")
-        answer_local = ai_response.get("answer_local", answer_english) # The response in Hausa/Pidgin/English
+        answer_local = ai_response.get("answer_local", answer_english)
+        detected_lang = ai_response.get("detected_language", "English").lower()
         final_keywords = ai_response.get("keywords", [])
 
-        # 5. Save to DB
         user_msg = ChatMessage(patient_id=patient.id, role='user', original_text=user_text, translated_text=translated_text)
         ai_msg = ChatMessage(patient_id=patient.id, role='ai', original_text=answer_local, translated_text=answer_english)
         db.session.add_all([user_msg, ai_msg])
@@ -624,19 +563,16 @@ def patient_voice():
         
         db.session.commit()
 
-        # 6. TEXT TO SPEECH (Using gTTS)
         audio_base64 = None
         try:
-            # gTTS uses 'ha' for Hausa, and 'en' for both English and Pidgin (closest match)
-            gtts_lang = 'ha' if language == 'ha' else 'en'
-            
+            gtts_lang = 'ha' if 'haus' in detected_lang else 'en'
             tts = gTTS(text=answer_local, lang=gtts_lang, slow=False)
             audio_fp = io.BytesIO()
             tts.write_to_fp(audio_fp)
             audio_fp.seek(0)
             audio_bytes = audio_fp.read()
             audio_base64 = "data:audio/mp3;base64," + base64.b64encode(audio_bytes).decode('utf-8')
-            logger.info(f"✅ gTTS patient audio generated for {target_lang_name}.")
+            logger.info(f"✅ gTTS patient audio generated for detected language: {detected_lang}.")
         except Exception as e:
             logger.error(f"❌ gTTS failed for patient: {e}")
 
