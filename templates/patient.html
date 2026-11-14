@@ -37,11 +37,6 @@
                     <p class="text-[10px] font-bold text-emerald uppercase tracking-wider">Always here to help</p>
                 </div>
             </div>
-            <select id="languageSelect" class="px-3 py-2 rounded-lg bg-surfaceLight border border-slate-200 text-xs font-bold text-slate-600 focus:outline-none">
-                <option value="ha">Hausa</option>
-                <option value="pcm">Pidgin</option>
-                <option value="en">English</option>
-            </select>
         </div>
 
         <!-- Chat Messages Area -->
@@ -105,7 +100,7 @@ function startChat() {
 }
 
 async function startRecording(event) {
-    if (event) event.preventDefault(); // Stops the Chrome context menu from appearing
+    if (event) event.preventDefault();
     if (!patientId) return;
     
     try {
@@ -120,7 +115,6 @@ async function startRecording(event) {
         mediaRecorder.onstop = async () => {
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
             
-            // Prevent sending tiny blobs (user tapped too fast)
             if (audioBlob.size < 2000) {
                 alert("Recording too short. Please hold the mic and speak for at least 2 seconds.");
                 updateUIState('idle');
@@ -141,7 +135,7 @@ async function startRecording(event) {
 }
 
 function stopRecording(event) {
-    if (event) event.preventDefault(); // Stops default touch actions
+    if (event) event.preventDefault();
     if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
         updateUIState('thinking');
@@ -152,7 +146,7 @@ async function sendAudioToBackend(audioBlob) {
     const formData = new FormData();
     formData.append('audio', audioBlob, 'recording.webm');
     formData.append('phone_number', patientId);
-    formData.append('language', document.getElementById('languageSelect').value);
+    // Language is no longer sent; the AI auto-detects it from the audio!
 
     try {
         const response = await fetch('/api/patient_voice', { method: 'POST', body: formData });
@@ -160,13 +154,9 @@ async function sendAudioToBackend(audioBlob) {
         
         if (!response.ok) throw new Error(data.error || 'Failed to process');
 
-        // Add User Message
         addMessage(data.user_text, 'user');
-        
-        // Add AI Message (Updated to use the dynamic local language key)
         addMessage(data.ai_text_local, 'ai', data.audio_url);
         
-        // Auto-play the reply if audio is available
         if (data.audio_url) {
             playAudio(data.audio_url);
         }
